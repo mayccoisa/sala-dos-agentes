@@ -29,7 +29,7 @@
       { "from": "../assets", "to": "app/assets" }
     ],
     "publish": [
-      { "provider": "github", "owner": "mayccoisa", "repo": "sala-dos-agentes" }
+      { "provider": "github", "owner": "mayccoisa", "repo": "sala-dos-agentes", "releaseType": "release" }
     ],
     "directories": { "output": "dist", "buildResources": "build" },
     "win": { "target": ["nsis"], "icon": "build/icon.ico" },
