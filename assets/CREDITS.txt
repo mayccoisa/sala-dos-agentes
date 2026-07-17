@@ -1,0 +1,8 @@
+﻿Personagens (pixel-art) da Sala dos Agentes
+-------------------------------------------
+Pack: Roguelike Characters (2.0) — Kenney (https://kenney.nl)
+Licenca: Creative Commons Zero (CC0) — dominio publico.
+  http://creativecommons.org/publicdomain/zero/1.0/
+Uso livre em projetos pessoais/comerciais. Credito opcional (mantido aqui).
+
+Arquivo: characters.png  (spritesheet, tiles 16x16, margem 1px entre tiles)

@@ -1,0 +1,7 @@
+# dependências e artefatos de build (Electron)
+node_modules/
+dist/
+
+# sistema
+.DS_Store
+Thumbs.db

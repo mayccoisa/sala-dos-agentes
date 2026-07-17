@@ -1,0 +1,37 @@
+{
+  "name": "sala-dos-agentes",
+  "productName": "Sala dos Agentes",
+  "version": "0.1.0",
+  "description": "Observador local (zero token) dos agentes do Claude Code",
+  "type": "module",
+  "main": "main.mjs",
+  "author": "WeON",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "br.com.weon.sala-dos-agentes",
+    "productName": "Sala dos Agentes",
+    "asar": true,
+    "files": ["main.mjs", "package.json"],
+    "extraResources": [
+      { "from": "../server.mjs", "to": "app/server.mjs" },
+      { "from": "../assets", "to": "app/assets" }
+    ],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Sala dos Agentes"
+    }
+  }
+}
