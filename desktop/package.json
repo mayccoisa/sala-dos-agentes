@@ -9,7 +9,11 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "release": "electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -19,10 +23,13 @@
     "appId": "br.com.weon.sala-dos-agentes",
     "productName": "Sala dos Agentes",
     "asar": true,
-    "files": ["main.mjs", "package.json"],
+    "files": ["main.mjs", "package.json", "node_modules/**/*"],
     "extraResources": [
       { "from": "../server.mjs", "to": "app/server.mjs" },
       { "from": "../assets", "to": "app/assets" }
+    ],
+    "publish": [
+      { "provider": "github", "owner": "mayccoisa", "repo": "sala-dos-agentes" }
     ],
     "directories": { "output": "dist", "buildResources": "build" },
     "win": { "target": ["nsis"], "icon": "build/icon.ico" },
