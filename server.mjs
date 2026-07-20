@@ -198,6 +198,20 @@ const CHANGELOG = [
     ],
   },
   {
+    version: '0.8.0',
+    date: '2026-07-20',
+    title: 'Cara de empresa — lobby, salas de reunião, cantina e descanso',
+    items: [
+      { emoji: '🏢', text: 'Lobby com logo da empresa e relógio no topo do mapa.' },
+      { emoji: '💬', text: 'Duas salas de reunião: quando um agente está pensando, ele sai da mesa e vai reunir.' },
+      { emoji: '🍽️', text: 'Cantina e sala de descanso com 2 PCs gamer.' },
+      { emoji: '✨', text: 'Agente trabalhando agora tem um brilho pulsante bem visível (a bolinha antiga sumia).' },
+      { emoji: '🪧', text: 'Plaquinha em cada mesa com o nome do agente e o cargo.' },
+      { emoji: '🧰', text: 'Ferramenta na mesa de acordo com o papel (prancheta pro Designer, livros pro Pesquisador, etc.).' },
+      { emoji: '👔', text: 'O Orquestrador virou o "Boss".' },
+    ],
+  },
+  {
     version: '0.7.0',
     date: '2026-07-20',
     title: 'Lista ao lado do mapa e linha do tempo de todos os chats',
@@ -261,7 +275,7 @@ const CHANGELOG = [
 // ---- Elenco: papel -> avatar + cor + nome amigável ------------------------
 // Papéis vêm de .claude/agents/. "orquestrador" é a sessão principal (main loop).
 const ROLES = {
-  orquestrador: { emoji: '🧠', name: 'Orquestrador', color: '#6366f1' },
+  orquestrador: { emoji: '🧠', name: 'Boss', color: '#6366f1' },
   pm: { emoji: '🧭', name: 'PM', color: '#2563eb' },
   pesquisador: { emoji: '🔎', name: 'Pesquisador', color: '#0891b2' },
   po: { emoji: '📋', name: 'PO', color: '#7c3aed' },
@@ -1065,6 +1079,13 @@ const HTML = /* html */ `<!doctype html>
     pcOn: [paImg('PC_FRONT_ON_1'), paImg('PC_FRONT_ON_2'), paImg('PC_FRONT_ON_3')],
     plant: paImg('PLANT'), largePlant: paImg('LARGE_PLANT'),
     whiteboard: paImg('WHITEBOARD'), bookshelf: paImg('BOOKSHELF'),
+    // áreas comuns: reunião, cantina, descanso e lobby
+    tableBig: paImg('TABLE_FRONT'), smallTable: paImg('SMALL_TABLE_FRONT'),
+    coffee: paImg('COFFEE'), coffeeTable: paImg('COFFEE_TABLE'),
+    sofa: paImg('SOFA_FRONT'), bench: paImg('CUSHIONED_BENCH'),
+    chairW: paImg('WOODEN_CHAIR_FRONT'), painting: paImg('LARGE_PAINTING'),
+    clock: paImg('CLOCK'), cactus: paImg('CACTUS'), bin: paImg('BIN'),
+    logo: paImg('logo'), // opcional: se assets/pa/logo.png existir, vira a logo do lobby
     chars: [paImg('char_0'),paImg('char_1'),paImg('char_2'),paImg('char_3'),paImg('char_4'),paImg('char_5')],
   };
   // papel -> índice do personagem (0..5). O usuário pode trocar em Personalizar.
@@ -1074,20 +1095,21 @@ const HTML = /* html */ `<!doctype html>
 
   // Elenco fixo do mapa: cada papel tem a sua salinha, sempre presente.
   // A cor é usada no letreiro/realce quando o agente está ativo.
+  // name = cargo (mostrado no letreiro da área); person = nome do agente (na mesa).
   var ROSTER = [
-    { type:'orquestrador', name:'Orquestrador', color:'#6366f1' },
-    { type:'pm-lead', name:'PM Lead', color:'#2563eb' },
-    { type:'pm-growth', name:'PM Growth', color:'#0891b2' },
-    { type:'pm-core', name:'PM Core', color:'#0ea5e9' },
-    { type:'pesquisador', name:'Pesquisador', color:'#14b8a6' },
-    { type:'po', name:'PO', color:'#7c3aed' },
-    { type:'designer', name:'Designer', color:'#db2777' },
-    { type:'lead-design', name:'Lead Design', color:'#c026d3' },
-    { type:'pa', name:'PA', color:'#059669' },
-    { type:'qa', name:'QA', color:'#16a34a' },
-    { type:'pos-release', name:'Pós-Release', color:'#ea580c' },
-    { type:'cs-implantacao', name:'CS / Implantação', color:'#d97706' },
-    { type:'conformidade-iso', name:'Conformidade ISO', color:'#64748b' },
+    { type:'orquestrador', name:'Boss', person:'Max', color:'#6366f1' },
+    { type:'pm-lead', name:'PM Lead', person:'Bia', color:'#2563eb' },
+    { type:'pm-growth', name:'PM Growth', person:'Theo', color:'#0891b2' },
+    { type:'pm-core', name:'PM Core', person:'Nina', color:'#0ea5e9' },
+    { type:'pesquisador', name:'Pesquisador', person:'Rui', color:'#14b8a6' },
+    { type:'po', name:'PO', person:'Duda', color:'#7c3aed' },
+    { type:'designer', name:'Designer', person:'Cauê', color:'#db2777' },
+    { type:'lead-design', name:'Lead Design', person:'Íris', color:'#c026d3' },
+    { type:'pa', name:'Analista de Dados', person:'Leo', color:'#059669' },
+    { type:'qa', name:'QA', person:'Sofia', color:'#16a34a' },
+    { type:'pos-release', name:'Pós-Release', person:'Val', color:'#ea580c' },
+    { type:'cs-implantacao', name:'CS / Implantação', person:'Rafa', color:'#d97706' },
+    { type:'conformidade-iso', name:'Conformidade ISO', person:'Ono', color:'#64748b' },
   ];
   // Estado (do log da sessão) para um papel: agrega os agentes ativos daquele tipo.
   function stateForRole(type){
@@ -1106,6 +1128,20 @@ const HTML = /* html */ `<!doctype html>
     return PA.chars[idx];
   }
   function hashStr(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i)|0;} return h; }
+
+  // Ferramenta na mesa por papel — algo ligado ao que o agente faz, em vez do PC.
+  // {kind:'pc'} usa o computador (ligado/animado quando trabalhando);
+  // {kind:'img', img, sw, sh} desenha uma imagem estática (proporção sw x sh).
+  function deskTool(type){
+    switch(type){
+      case 'designer':     return { kind:'img', img:PA.whiteboard, sw:32, sh:32 }; // prancheta
+      case 'lead-design':  return { kind:'img', img:PA.painting,   sw:32, sh:32 }; // arte/curadoria
+      case 'pesquisador':  return { kind:'img', img:PA.bookshelf,  sw:32, sh:16 }; // livros/pesquisa
+      case 'conformidade-iso': return { kind:'img', img:PA.clock,  sw:16, sh:32 }; // relógio/registro
+      case 'cs-implantacao':   return { kind:'img', img:PA.coffee, sw:16, sh:16 }; // café com o cliente
+      default:             return { kind:'pc' }; // Boss, PMs, PO, PA(dados), QA, Pós = computador
+    }
+  }
 
   // Preferências (sala + avatares) — carregadas de /prefs, salvas no PC.
   var PREFS = { room:'escritorio', avatars:{} };
@@ -1317,7 +1353,9 @@ const HTML = /* html */ `<!doctype html>
   var ZHEAD = 28;             // altura do letreiro da área
   var ZPAD = 14;              // respiro interno da área
   var MZ = 2.3;               // escala das estações dentro da área
-  var MS_W = 132, MS_H = 122; // célula de estação (compacta)
+  var MS_W = 138, MS_H = 152; // célula de estação (compacta) — cabe a plaquinha
+  var LOBBY_H = 74;           // faixa do lobby (logo da empresa)
+  var COMMON_H = 212;         // altura das áreas comuns (reunião/cantina/descanso)
 
   // Áreas do escritório e quais papéis moram em cada uma.
   var ZONES = [
@@ -1335,24 +1373,53 @@ const HTML = /* html */ `<!doctype html>
     return { type:type, name:type, color:'#64748b' };
   }
 
+  // Áreas comuns da empresa (sem elenco fixo). As salas de reunião recebem os
+  // agentes que estão PENSANDO (thinking) — eles "saem" da mesa e vão reunir.
+  var COMMON = [
+    { id:'meet1', name:'Reunião 1', emoji:'💬', color:'#8b5cf6', kind:'meeting' },
+    { id:'meet2', name:'Reunião 2', emoji:'💬', color:'#a855f7', kind:'meeting' },
+    { id:'cantina', name:'Cantina', emoji:'🍽️', color:'#f59e0b', kind:'cantina' },
+    { id:'descanso', name:'Descanso', emoji:'🎮', color:'#ec4899', kind:'lounge' },
+  ];
+  function thinkingTypes(){
+    var out=[]; ROSTER.forEach(function(r){ if(stateForRole(r.type).status==='thinking') out.push(r.type); });
+    return out;
+  }
+
   // Layout (masonry) das áreas para uma largura; usado no dimensionamento e no render.
-  function computeZoneLayout(w){
+  function computeLayout(w){
     var cols = w>=820 ? 2 : 1;
     var zw = Math.floor((w - (cols+1)*GAP) / cols);
     var deskCols = Math.max(1, Math.floor((zw - 2*ZPAD) / MS_W));
-    var colY=[]; for(var i=0;i<cols;i++) colY[i]=GAP;
-    var items=[];
+    function argmin(a){ var c=0; for(var k=1;k<a.length;k++) if(a[k]<a[c]) c=k; return c; }
+    // lobby ocupa o topo, largura cheia
+    var lobby = { x:GAP, y:GAP, w:w-2*GAP, h:LOBBY_H };
+    var top = GAP + LOBBY_H + GAP;
+    // áreas de trabalho (masonry)
+    var colY=[]; for(var i=0;i<cols;i++) colY[i]=top;
+    var zones=[];
     ZONES.forEach(function(z){
-      var n=z.roles.length, rows=Math.ceil(n/deskCols);
+      var rows=Math.ceil(z.roles.length/deskCols);
       var zh = ZHEAD + ZPAD + 16 + rows*MS_H + ZPAD;
-      var c=0; for(var k=1;k<cols;k++) if(colY[k]<colY[c]) c=k;
-      items.push({ z:z, x:GAP+c*(zw+GAP), y:colY[c], w:zw, h:zh, deskCols:deskCols });
+      var c=argmin(colY);
+      zones.push({ z:z, x:GAP+c*(zw+GAP), y:colY[c], w:zw, h:zh, deskCols:deskCols });
       colY[c]+=zh+GAP;
     });
-    var H=0; for(var j=0;j<cols;j++) H=Math.max(H,colY[j]);
-    return { items:items, height:H+4, deskCols:deskCols };
+    var zonesBottom=0; for(var j=0;j<cols;j++) zonesBottom=Math.max(zonesBottom,colY[j]);
+    // divisória + áreas comuns (masonry)
+    var labelY = zonesBottom + 4;
+    var cStart = zonesBottom + 24;
+    var ccolY=[]; for(var m=0;m<cols;m++) ccolY[m]=cStart;
+    var commons=[];
+    COMMON.forEach(function(cm){
+      var c2=argmin(ccolY);
+      commons.push({ cm:cm, x:GAP+c2*(zw+GAP), y:ccolY[c2], w:zw, h:COMMON_H });
+      ccolY[c2]+=COMMON_H+GAP;
+    });
+    var H=0; for(var n2=0;n2<cols;n2++) H=Math.max(H,ccolY[n2]);
+    return { lobby:lobby, zones:zones, commons:commons, labelY:labelY, deskCols:deskCols, height:H+4 };
   }
-  function officeSize(w){ return { h: computeZoneLayout(w).height }; }
+  function officeSize(w){ return { h: computeLayout(w).height }; }
 
   // Piso do prédio (corredores) — piso PA cinza ou tema da sala escolhida.
   function drawBuildingFloor(w,h){
@@ -1375,35 +1442,92 @@ const HTML = /* html */ `<!doctype html>
     ctx.restore();
   }
 
+  // Plaquinha de mesa: NOME do agente (destaque) + CARGO (cor do papel).
+  function nameplate(cx, topY, person, cargo, color, dim){
+    ctx.font='800 12.5px ui-sans-serif,system-ui';
+    var w1=ctx.measureText(person).width;
+    ctx.font='700 10px ui-sans-serif,system-ui';
+    var w2=ctx.measureText(cargo.toUpperCase()).width;
+    var bw=Math.max(w1,w2)+16, bh=30, bx=cx-bw/2, by=topY;
+    ctx.save(); ctx.globalAlpha=dim?0.72:1;
+    roundRect(bx,by,bw,bh,7);
+    ctx.fillStyle='rgba(10,13,18,.82)'; ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle=color; ctx.stroke();
+    ctx.textAlign='center';
+    ctx.textBaseline='alphabetic'; ctx.fillStyle='#f2f5fa';
+    ctx.font='800 12.5px ui-sans-serif,system-ui'; ctx.fillText(person, cx, by+13);
+    ctx.fillStyle=color; ctx.font='800 9.5px ui-sans-serif,system-ui';
+    ctx.fillText(cargo.toUpperCase(), cx, by+25);
+    ctx.restore();
+  }
+
   // Estação compacta (um agente) dentro de uma área.
   function drawMiniStation(type, cx, deskBottom, t){
     var st=stateForRole(type), meta=rosterMeta(type);
-    var active = st.status==='working' || st.status==='thinking', off=st.status==='off';
+    var thinking = st.status==='thinking';
+    var working = st.status==='working';
+    var off=st.status==='off';
     var deskW=48*MZ, deskH=32*MZ, deskX=cx-deskW/2, deskY=deskBottom-deskH;
-    var bob = active ? Math.round(Math.sin(t/220+cx)*1.4) : 0;
+    var bob = working ? Math.round(Math.sin(t/220+cx)*1.4) : 0;
     var aw=16*MZ, ah=32*MZ, ax=cx-aw/2, ay=(deskY+8*MZ)-ah-bob;
+    var pulse = 0.5+0.5*Math.sin(t/300+cx);
+
+    // (1) FEEDBACK de trabalhando: halo pulsante no chão + brilho atrás do agente
+    if(working){
+      var wc=meta.color;
+      ctx.save();
+      // halo no piso
+      ctx.globalAlpha=0.25+0.20*pulse; ctx.fillStyle=wc;
+      ctx.beginPath(); ctx.ellipse(cx, deskY+6*MZ, 26+6*pulse, 9+2*pulse, 0,0,7); ctx.fill();
+      // brilho radial atrás do personagem
+      var gr=ctx.createRadialGradient(cx, ay+ah*0.45, 4, cx, ay+ah*0.45, ah*0.9);
+      gr.addColorStop(0, wc); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha=0.30+0.18*pulse; ctx.fillStyle=gr;
+      ctx.fillRect(cx-ah, ay-6, ah*2, ah+12);
+      ctx.restore();
+    }
+
     if(PA.chair.complete) ctx.drawImage(PA.chair, cx-8*MZ, ay+4*MZ, 16*MZ, 16*MZ);
-    var img=charFor(type);
-    ctx.save(); ctx.globalAlpha = off?0.5 : (st.status==='idle'?0.75:1);
-    if(img && img.complete) ctx.drawImage(img,0,0,16,32, ax,ay,aw,ah);
-    else { ctx.fillStyle=meta.color; ctx.fillRect(ax,ay,aw,ah); }
-    ctx.restore();
+    // Agente PENSANDO saiu para a reunião: cadeira vazia.
+    if(!thinking){
+      var img=charFor(type);
+      ctx.save(); ctx.globalAlpha = off?0.5 : (st.status==='idle'?0.75:1);
+      if(img && img.complete) ctx.drawImage(img,0,0,16,32, ax,ay,aw,ah);
+      else { ctx.fillStyle=meta.color; ctx.fillRect(ax,ay,aw,ah); }
+      ctx.restore();
+    }
     if(PA.desk.complete) ctx.drawImage(PA.desk, deskX, deskY, deskW, deskH);
-    var ps=MZ*0.8, pw=16*ps, ph=32*ps, px=cx+6*MZ, py=(deskY+15*MZ)-ph;
-    var pcImg = active ? PA.pcOn[Math.floor(t/220)%3] : PA.pcOff;
-    if(pcImg && pcImg.complete) ctx.drawImage(pcImg, px, py, pw, ph);
-    // ponto de status
-    ctx.fillStyle=statusColor(st.status==='off'?'idle':st.status);
-    ctx.beginPath(); ctx.arc(ax+aw-3, ay+6, 4, 0, 7); ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=1; ctx.stroke();
-    // nome
-    ctx.fillStyle= off? 'rgba(200,208,220,.7)' : cssVar('--text');
-    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font='650 11.5px ui-sans-serif,system-ui';
-    ctx.fillText(meta.name, cx, deskBottom+3);
-    // balão / estado
-    if(active && st.doing) bubble(cx, ay+2, st.doing);
-    else if(st.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.font='10.5px ui-sans-serif';
-      ctx.fillText('✓ concluído', cx, deskBottom+17); }
+
+    // (3) FERRAMENTA na mesa (por papel), em vez do PC do lado.
+    var tool=deskTool(type);
+    if(tool.kind==='pc'){
+      var pcImg = working ? PA.pcOn[Math.floor(t/160)%3] : PA.pcOff;
+      var ph=30*MZ*0.55, pw=16*MZ*0.85, px=cx-pw/2, py=(deskY+6*MZ)-ph*0.55;
+      if(pcImg && pcImg.complete) ctx.drawImage(pcImg, px, py, pw, ph);
+    } else if(tool.img && tool.img.complete){
+      var scale=(deskW*0.5)/tool.sw, iw=tool.sw*scale, ih=tool.sh*scale;
+      var ix=cx-iw/2, iy=(deskY+7*MZ)-ih;
+      // leve balanço quando trabalhando
+      ctx.drawImage(tool.img, 0,0,tool.sw,tool.sh, ix, iy - (working?Math.round(1+pulse):0), iw, ih);
+    }
+
+    // (1) indicador de status maior e com brilho
+    var scol=statusColor(off?'idle':st.status);
+    ctx.save();
+    if(working||thinking){ ctx.shadowColor=scol; ctx.shadowBlur=8; }
+    ctx.fillStyle=scol; ctx.beginPath(); ctx.arc(ax+aw-2, ay+6, working?5.5:4.5, 0, 7); ctx.fill();
+    ctx.shadowBlur=0; ctx.strokeStyle='#0b0d12'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.restore();
+
+    // (2) plaquinha nome + cargo
+    nameplate(cx, deskBottom+3, meta.person, meta.name, meta.color, off);
+
+    // balão / estado (abaixo da plaquinha)
+    if(working && st.doing) bubble(cx, ay+2, st.doing);
+    else if(thinking){ ctx.fillStyle=cssVar('--think'); ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.font='700 10.5px ui-sans-serif'; ctx.fillText('💭 em reunião', cx, deskBottom+36); }
+    else if(st.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.font='700 10.5px ui-sans-serif'; ctx.fillText('✓ concluído', cx, deskBottom+36); }
   }
 
   // Uma área do escritório: piso próprio + letreiro + paredes + os agentes dela.
@@ -1455,11 +1579,133 @@ const HTML = /* html */ `<!doctype html>
     });
   }
 
+  // Moldura comum (piso + tinta + tapete + paredes com porta + letreiro).
+  function drawFrame(x,y,w,h,color,emoji,name,rightText,active){
+    var bodyY=y+ZHEAD, bodyH=h-ZHEAD;
+    fillRoomFloor(x, bodyY, w, bodyH);
+    ctx.save(); roundRect(x,bodyY,w,bodyH,8); ctx.clip();
+    ctx.fillStyle=color; ctx.globalAlpha=0.12; ctx.fillRect(x,bodyY,w,bodyH);
+    ctx.globalAlpha=0.16; roundRect(x+18,bodyY+14,w-36,bodyH-28,10); ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.lineWidth=active?3:2;
+    ctx.strokeStyle = active ? color : 'rgba(120,130,145,.7)';
+    if(active){ ctx.shadowColor=color; ctx.shadowBlur=12; }
+    var doorW=2*PT, dl=x+w/2-doorW/2, dr=x+w/2+doorW/2;
+    ctx.beginPath();
+    ctx.moveTo(dl,y+h); ctx.lineTo(x+8,y+h); ctx.arcTo(x,y+h,x,y+h-8,8);
+    ctx.lineTo(x,bodyY); ctx.lineTo(x+w,bodyY); ctx.lineTo(x+w,y+h-8);
+    ctx.arcTo(x+w,y+h,x+w-8,y+h,8); ctx.lineTo(dr,y+h);
+    ctx.stroke(); ctx.restore();
+    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(dl,y+h-4,doorW,6);
+    ctx.save(); roundRect(x,y,w,ZHEAD,8); ctx.clip();
+    ctx.fillStyle=color; ctx.globalAlpha=active?1:0.85; ctx.fillRect(x,y,w,ZHEAD);
+    ctx.restore();
+    ctx.fillStyle='#0b0d12'; ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.font='800 13px ui-sans-serif,system-ui'; ctx.fillText(emoji+'  '+name, x+12, y+ZHEAD/2+1);
+    if(rightText){ ctx.textAlign='right'; ctx.font='700 11px ui-sans-serif,system-ui';
+      ctx.globalAlpha=.8; ctx.fillText(rightText, x+w-12, y+ZHEAD/2+1); ctx.globalAlpha=1; }
+    return { bodyY:bodyY, bodyH:bodyH };
+  }
+
+  // Lobby com a logo da empresa (usa /pa/logo.png se existir; senão desenha um wordmark).
+  function drawLobby(r,t){
+    var x=r.x,y=r.y,w=r.w,h=r.h;
+    ctx.save(); roundRect(x,y,w,h,10); ctx.clip();
+    var g=ctx.createLinearGradient(x,y,x+w,y);
+    g.addColorStop(0,'#1b2230'); g.addColorStop(1,'#141821'); ctx.fillStyle=g; ctx.fillRect(x,y,w,h);
+    // faixa de destaque
+    ctx.fillStyle='rgba(99,102,241,.25)'; ctx.fillRect(x,y,6,h);
+    ctx.restore();
+    ctx.strokeStyle='rgba(120,130,145,.5)'; ctx.lineWidth=1.5; roundRect(x,y,w,h,10); ctx.stroke();
+    var cy=y+h/2;
+    if(PA.logo && PA.logo.complete && PA.logo.naturalWidth){
+      var lh=h-20, lw=lh*(PA.logo.naturalWidth/PA.logo.naturalHeight);
+      ctx.drawImage(PA.logo, x+16, y+10, lw, lh);
+    } else {
+      // monograma
+      var bs=h-24, bx=x+16, by=y+12;
+      ctx.fillStyle='#6366f1'; roundRect(bx,by,bs,bs,10); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.font='800 '+Math.round(bs*0.5)+'px ui-sans-serif,system-ui';
+      ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('SA', bx+bs/2, by+bs/2+1);
+      // wordmark
+      ctx.textAlign='left'; ctx.fillStyle='#e7ecf3';
+      ctx.font='800 22px ui-sans-serif,system-ui'; ctx.fillText('Sala dos Agentes', bx+bs+14, cy-8);
+      ctx.fillStyle='#8b96a8'; ctx.font='600 12px ui-sans-serif,system-ui';
+      ctx.fillText('o escritório dos seus agentes', bx+bs+14, cy+13);
+    }
+    // relógio + horário à direita (cara de empresa)
+    if(PA.clock && PA.clock.complete){ ctx.drawImage(PA.clock, x+w-16*2-92, y+h/2-16*2/2, 16*2, 32*2); }
+    var now=new Date(), hh=('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2);
+    ctx.fillStyle='#dfe5ee'; ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.font='700 18px ui-sans-serif,system-ui'; ctx.fillText(hh, x+w-18, cy);
+  }
+
+  // Área comum: reunião (recebe quem está pensando), cantina ou descanso (2 PCs gamer).
+  function drawCommonRoom(item, occupants, t){
+    var cm=item.cm, x=item.x, y=item.y, w=item.w, h=item.h;
+    var kind=cm.kind, active = kind==='meeting' && occupants.length>0;
+    var right = kind==='meeting' ? (occupants.length+' em reunião')
+      : (kind==='cantina' ? 'café & comida' : '2 PCs gamer');
+    var b=drawFrame(x,y,w,h,cm.color,cm.emoji,cm.name,right,active);
+    var cxm=x+w/2, midY=b.bodyY+b.bodyH/2;
+    if(kind==='meeting'){
+      // mesa de reunião ao centro
+      var tw=48*2.0, th=64*2.0*0.5;
+      if(PA.tableBig && PA.tableBig.complete)
+        ctx.drawImage(PA.tableBig, 0,0,48,40, cxm-tw/2, midY-th/2, tw, th);
+      // participantes ao redor (quem está pensando) — pés apoiados no chão da sala
+      var sc=1.6, aw=16*sc, ah=32*sc;
+      var seatsFeet=[
+        [cxm-30, midY-th/2+6], [cxm+30, midY-th/2+6],           // atrás da mesa
+        [cxm-30, midY+th/2+46], [cxm+30, midY+th/2+46],          // à frente
+        [cxm-tw/2-26, midY+18], [cxm+tw/2+26, midY+18]           // laterais
+      ];
+      occupants.slice(0,6).forEach(function(type,i){
+        var f=seatsFeet[i], img=charFor(type);
+        if(img&&img.complete) ctx.drawImage(img,0,0,16,32, f[0]-aw/2, f[1]-ah, aw, ah);
+        ctx.fillStyle=cssVar('--think'); ctx.beginPath(); ctx.arc(f[0]+aw/2-1, f[1]-ah-2, 3,0,7); ctx.fill();
+      });
+      if(!occupants.length){ ctx.fillStyle='rgba(139,150,168,.7)'; ctx.textAlign='center';
+        ctx.textBaseline='middle'; ctx.font='12px ui-sans-serif'; ctx.fillText('sala livre', cxm, midY+52); }
+    } else if(kind==='cantina'){
+      // duas mesinhas com café + banco + planta
+      if(PA.smallTable&&PA.smallTable.complete){ ctx.drawImage(PA.smallTable,0,0,32,32, cxm-120, midY-20, 32*2, 32*2);
+        ctx.drawImage(PA.smallTable,0,0,32,32, cxm+56, midY-20, 32*2, 32*2); }
+      if(PA.coffee&&PA.coffee.complete){ ctx.drawImage(PA.coffee,0,0,16,16, cxm-104, midY-8, 16*1.6,16*1.6);
+        ctx.drawImage(PA.coffee,0,0,16,16, cxm+72, midY-8, 16*1.6,16*1.6); }
+      if(PA.chairW&&PA.chairW.complete){ ctx.drawImage(PA.chairW,0,0,16,32, cxm-104, midY-64, 16*1.8,32*1.8); }
+      if(PA.sofa&&PA.sofa.complete){ ctx.drawImage(PA.sofa,0,0,32,16, cxm+34, midY+34, 32*2.4,16*2.4); }
+      if(PA.plant&&PA.plant.complete){ ctx.drawImage(PA.plant,0,0,16,32, x+w-16*2-10, y+h-32*2-6, 16*2,32*2); }
+    } else { // lounge / descanso: sofá + 2 PCs gamer
+      if(PA.sofa&&PA.sofa.complete){ ctx.drawImage(PA.sofa,0,0,32,16, cxm-32*1.4, b.bodyY+b.bodyH-16*2.6-6, 32*2.8,16*2.8); }
+      // 2 estações gamer: mesinha + PC ligado (animado)
+      var frame=Math.floor(t/220)%3;
+      function gamer(gx){
+        if(PA.smallTable&&PA.smallTable.complete) ctx.drawImage(PA.smallTable,0,0,32,32, gx-32, midY-30, 32*2,32*2);
+        var pc = PA.pcOn[frame];
+        if(pc&&pc.complete) ctx.drawImage(pc,0,0,16,32, gx-16, midY-30-32*1.2+8, 16*2.2,32*2.2);
+      }
+      gamer(cxm-70); gamer(cxm+70);
+      if(PA.plant&&PA.plant.complete){ ctx.drawImage(PA.plant,0,0,16,32, x+w-16*2-10, y+h-32*2-6, 16*2,32*2); }
+    }
+  }
+
   function drawOffice(cssW, cssH, t){
     ctx.imageSmoothingEnabled=false;
     drawBuildingFloor(cssW, cssH);
-    var L=computeZoneLayout(cssW);
-    L.items.forEach(function(item){ drawZone(item, t); });
+    var L=computeLayout(cssW);
+    drawLobby(L.lobby, t);
+    L.zones.forEach(function(item){ drawZone(item, t); });
+    // divisória "Áreas comuns"
+    ctx.fillStyle=cssVar('--muted'); ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.font='800 11px ui-sans-serif,system-ui';
+    ctx.fillText('ÁREAS COMUNS', GAP+2, L.labelY);
+    // distribui quem está pensando entre as 2 salas de reunião
+    var thinkers=thinkingTypes(), meetIdx=0, assign={};
+    var meetIds=L.commons.filter(function(c){return c.cm.kind==='meeting';}).map(function(c){return c.cm.id;});
+    thinkers.forEach(function(type){ var id=meetIds[meetIdx%meetIds.length]; meetIdx++;
+      (assign[id]=assign[id]||[]).push(type); });
+    L.commons.forEach(function(item){ drawCommonRoom(item, assign[item.cm.id]||[], t); });
   }
 
   function drawRoom(t){
