@@ -793,6 +793,7 @@ const HTML = /* html */ `<!doctype html>
   /* modal de personalização */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:50}
   .modal.hidden{display:none}  /* especificidade > .modal, senão o grid vence o none */
+  .updatebar.hidden{display:none}  /* idem: senão a barra fica sempre visível */
   .modal .sheet{background:var(--panel);border:1px solid var(--line);border-radius:16px;
     width:min(680px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
   .sheethead{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
