@@ -38,6 +38,7 @@ function HERE_EARLY() { return path.dirname(fileURLToPath(import.meta.url)); }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SPRITE_SHEET = path.join(HERE, 'assets', 'characters.png');
+const TILE_SHEET = path.join(HERE, 'assets', 'tiles.png');
 
 // Diretório onde o Claude Code grava os transcripts deste projeto.
 // Portátil: funciona em qualquer PC sem editar nada.
@@ -121,34 +122,82 @@ function writePrefs(next) {
 }
 
 // ---- Catálogo de salas (cenários) -----------------------------------------
-// Cada sala é uma paleta de piso/parede desenhada no canvas — arte 100% própria
-// (procedural), sem depender de imagem externa. O usuário escolhe nas config.
+// Cada sala tem paleta (piso/parede/tapete desenhados no canvas) + `deco`:
+// móveis em pixel-art do tileset CC0 "Roguelike Indoors" (Kenney). Cada item
+// de deco = { t:[col,row] no tiles.png, x,y = posição 0..1 na sala (âncora no
+// pé, centro), s = escala (padrão 3), w/h = tiles de largura/altura (padrão 1) }.
+// Coordenadas mapeadas manualmente da folha (grade 27×18, tiles 16px stride 17).
 const ROOMS = [
   { id: 'escritorio', name: 'Escritório', emoji: '🏢',
-    floor: '#151b26', floor2: '#111722', wall: '#0e1420', rug: '#1c2740' },
+    floor: '#2c333f', floor2: '#262c37', wall: '#3a2f26', rug: '#26466e',
+    deco: [
+      { t: [16, 0], x: 0.05, y: 0.99 },   // planta em vaso (canto)
+      { t: [17, 0], x: 0.95, y: 0.99 },   // planta em vaso (canto)
+      { t: [0, 13], x: 0.18, y: 1.0 },    // gaveteiro / credenza
+      { t: [1, 13], x: 0.30, y: 1.0 },    // gaveteiro
+      { t: [19, 15], x: 0.72, y: 1.0 },   // estante de livros
+      { t: [20, 15], x: 0.84, y: 1.0 },   // estante de livros
+      { t: [16, 4], x: 0.5, y: 1.0 },     // banqueta / mesinha
+      { t: [22, 14], x: 0.5, y: 0.14, s: 2.5 }, // quadro/espelho na parede
+    ] },
   { id: 'masmorra', name: 'Masmorra', emoji: '🏰',
-    floor: '#22201c', floor2: '#1a1815', wall: '#14110d', rug: '#3a2f1e' },
+    floor: '#2a2620', floor2: '#221f1a', wall: '#171310', rug: '#3a2f1e',
+    deco: [
+      { t: [21, 6], x: 0.12, y: 0.4, s: 2.5 },  // tocha na parede
+      { t: [21, 6], x: 0.88, y: 0.4, s: 2.5 },  // tocha na parede
+      { t: [16, 7], x: 0.2, y: 1.0 },   // candelabro
+      { t: [21, 9], x: 0.85, y: 1.0 },  // escada
+    ] },
   { id: 'floresta', name: 'Floresta', emoji: '🌲',
-    floor: '#16241a', floor2: '#111d15', wall: '#0d1710', rug: '#204028' },
+    floor: '#1f3a24', floor2: '#1a3220', wall: '#16281a', rug: '#255230',
+    deco: [
+      { t: [16, 0], x: 0.08, y: 0.99 }, { t: [17, 0], x: 0.22, y: 1.0 },
+      { t: [16, 0], x: 0.9, y: 0.99 },  { t: [17, 0], x: 0.78, y: 1.0 },
+      { t: [16, 4], x: 0.5, y: 1.0 },
+    ] },
   { id: 'nave', name: 'Nave espacial', emoji: '🚀',
-    floor: '#141a24', floor2: '#0f151f', wall: '#0a0f18', rug: '#182a44' },
+    floor: '#20293a', floor2: '#1a2231', wall: '#141a28', rug: '#1c3358',
+    deco: [
+      { t: [24, 8], x: 0.15, y: 1.0 },  // painel/console escuro
+      { t: [22, 4], x: 0.85, y: 1.0 },  // console com tela azul
+      { t: [22, 14], x: 0.5, y: 0.14, s: 2.5 }, // visor
+    ] },
   { id: 'cafe', name: 'Cafeteria', emoji: '☕',
-    floor: '#241d18', floor2: '#1c1611', wall: '#161009', rug: '#3a2a1c' },
+    floor: '#3a2f26', floor2: '#332a22', wall: '#241a12', rug: '#5a3a24',
+    deco: [
+      { t: [16, 0], x: 0.06, y: 0.99 }, { t: [17, 0], x: 0.94, y: 0.99 },
+      { t: [0, 13], x: 0.2, y: 1.0 },   // balcão/gaveteiro
+      { t: [16, 4], x: 0.4, y: 1.0 }, { t: [17, 4], x: 0.6, y: 1.0 }, // banquetas
+      { t: [19, 15], x: 0.82, y: 1.0 }, // prateleira
+    ] },
   { id: 'neon', name: 'Neon', emoji: '🌆',
-    floor: '#1a1226', floor2: '#140d1e', wall: '#0d0816', rug: '#2c1b45' },
+    floor: '#241a33', floor2: '#1e1530', wall: '#150e26', rug: '#3a1f5e',
+    deco: [
+      { t: [16, 0], x: 0.06, y: 0.99 }, { t: [17, 0], x: 0.94, y: 0.99 },
+      { t: [24, 8], x: 0.2, y: 1.0 },   // console
+      { t: [22, 14], x: 0.5, y: 0.14, s: 2.5 },
+    ] },
 ];
 
 // ---- Novidades por versão (alimenta o modal "O que há de novo") ------------
 // Fonte única do changelog exibido ao usuário — a mais recente aparece primeiro.
 const CHANGELOG = [
   {
+    version: '0.3.0',
+    date: '2026-07-20',
+    title: 'Salas com cara de verdade',
+    items: [
+      { emoji: '🏢', text: 'As salas agora têm mobília em pixel-art: o Escritório ganhou mesas, estantes, plantas e quadros — dá pra sentir o ambiente.' },
+      { emoji: '🎨', text: 'Todos os 6 cenários foram redecorados (Escritório, Masmorra, Floresta, Nave, Cafeteria e Neon).' },
+      { emoji: '🖼️', text: 'Arte de móveis CC0 do pack Roguelike Indoors da Kenney, no mesmo estilo dos personagens (crédito no rodapé).' },
+    ],
+  },
+  {
     version: '0.2.1',
     date: '2026-07-20',
     title: 'Deixe a sala com a sua cara',
     items: [
-      { emoji: '🎨', text: 'Escolha o cenário da sala — 6 ambientes (Escritório, Masmorra, Floresta, Nave, Cafeteria e Neon).' },
-      { emoji: '🧑‍🚀', text: 'Escolha o avatar de cada agente: abra ⚙︎ Personalizar e clique no personagem que quiser.' },
-      { emoji: '💾', text: 'Suas escolhas ficam salvas só no seu PC.' },
+      { emoji: '🎨', text: 'Escolha o cenário da sala e o avatar de cada agente em ⚙︎ Personalizar.' },
       { emoji: '🔄', text: 'O app passa a se atualizar sozinho: baixa a versão nova em segundo plano e instala ao reiniciar.' },
     ],
   },
@@ -544,6 +593,17 @@ const server = http.createServer((req, res) => {
     }
     return;
   }
+  if (req.url && req.url.startsWith('/tiles.png')) {
+    try {
+      const png = fs.readFileSync(TILE_SHEET);
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=3600' });
+      res.end(png);
+    } catch {
+      res.writeHead(404);
+      res.end('tiles ausente');
+    }
+    return;
+  }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(HTML);
 });
@@ -756,7 +816,7 @@ const HTML = /* html */ `<!doctype html>
   <footer class="foot">
     <span id="verLabel">Sala dos Agentes</span>
     <span class="dotsep">·</span>
-    <span>Personagens: <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Roguelike Characters</a> por <a href="https://kenney.nl" target="_blank" rel="noreferrer">Kenney</a> (CC0)</span>
+    <span>Arte: <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Roguelike Characters</a> + <a href="https://kenney.nl/assets/roguelike-indoors" target="_blank" rel="noreferrer">Indoors</a> por <a href="https://kenney.nl" target="_blank" rel="noreferrer">Kenney</a> (CC0)</span>
   </footer>
 </main>
 
@@ -815,6 +875,10 @@ const HTML = /* html */ `<!doctype html>
   var sheet = new Image(); var sheetReady = false;
   sheet.onload = function(){ sheetReady = true; };
   sheet.src = '/characters.png';
+  // folha de móveis (tileset CC0 Roguelike Indoors, Kenney) — 16px, stride 17.
+  var tiles = new Image(); var tilesReady = false;
+  tiles.onload = function(){ tilesReady = true; };
+  tiles.src = '/tiles.png';
 
   // Preferências (sala + avatares) — carregadas de /prefs, salvas no PC.
   var PREFS = { room:'escritorio', avatars:{} };
@@ -910,8 +974,25 @@ const HTML = /* html */ `<!doctype html>
     ctx.save(); ctx.globalAlpha=.5; ctx.fillStyle=R.rug||cssVar('--floor2');
     var rw=Math.min(w-80,520), rx=(w-rw)/2, ry=wallH+22;
     roundRect(rx,ry,rw,h-ry-22,14); ctx.fill(); ctx.restore();
+    // móveis em pixel-art (deco da sala) — desenhados por cima do piso
+    drawDeco(w, h);
     ctx.strokeStyle = cssVar('--line'); ctx.lineWidth=1;
     ctx.globalAlpha=.5; ctx.strokeRect(.5,.5,w-1,h-1); ctx.globalAlpha=1;
+  }
+
+  // Desenha os móveis da sala a partir do tileset (âncora no pé, centro).
+  function drawDeco(w,h){
+    var R = activeRoom || {}; if(!tilesReady || !R.deco) return;
+    for(var i=0;i<R.deco.length;i++){
+      var d=R.deco[i], sp=d.t, sc=d.s||3, tw=(d.w||1), th=(d.h||1);
+      var dw=TILE*sc*tw, dh=TILE*sc*th;
+      var cx=d.x*w, feet=d.y*h;
+      var dx=Math.round(cx-dw/2), dy=Math.round(feet-dh);
+      // sombra leve no chão
+      ctx.save(); ctx.fillStyle='rgba(0,0,0,.20)';
+      ctx.beginPath(); ctx.ellipse(cx, feet-2, dw*0.4, 5, 0, 0, 7); ctx.fill(); ctx.restore();
+      ctx.drawImage(tiles, sp[0]*STRIDE, sp[1]*STRIDE, TILE*tw, TILE*th, dx, dy, dw, dh);
+    }
   }
 
   function drawEdge(p,c,active,t,color){
