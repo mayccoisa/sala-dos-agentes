@@ -106,8 +106,13 @@ function readPrefs() {
       avatars: p.avatars && typeof p.avatars === 'object' ? p.avatars : {},
       seenChangelog: typeof p.seenChangelog === 'string' ? p.seenChangelog : '',
       status: p.status && typeof p.status === 'object' ? p.status : {},
+      myStatus: typeof p.myStatus === 'string' ? p.myStatus : 'disponivel',
+      slack: p.slack && typeof p.slack === 'object'
+        ? { token: typeof p.slack.token === 'string' ? p.slack.token : '',
+            enabled: !!p.slack.enabled } : { token: '', enabled: false },
     };
-  } catch { return { room: 'escritorio', avatars: {}, seenChangelog: '', status: {} }; }
+  } catch { return { room: 'escritorio', avatars: {}, seenChangelog: '', status: {},
+    myStatus: 'disponivel', slack: { token: '', enabled: false } }; }
 }
 function writePrefs(next) {
   const cur = readPrefs();
@@ -117,6 +122,10 @@ function writePrefs(next) {
     seenChangelog: typeof next.seenChangelog === 'string' ? next.seenChangelog : cur.seenChangelog,
     // status é SUBSTITUÍDO (o cliente envia o mapa completo) — permite remover chaves.
     status: next.status && typeof next.status === 'object' ? next.status : cur.status,
+    myStatus: typeof next.myStatus === 'string' ? next.myStatus : cur.myStatus,
+    slack: next.slack && typeof next.slack === 'object'
+      ? { token: typeof next.slack.token === 'string' ? next.slack.token : cur.slack.token,
+          enabled: !!next.slack.enabled } : cur.slack,
   };
   try {
     fs.mkdirSync(path.dirname(PREFS_FILE), { recursive: true });
@@ -198,6 +207,16 @@ const CHANGELOG = [
     items: [
       { emoji: '🌲', text: 'A Floresta agora tem chão de grama e árvores; a Masmorra ganhou piso de pedra, tochas, barris e lareira acesa.' },
       { emoji: '🖼️', text: 'Novos tiles CC0 do pack Roguelike RPG da Kenney (terreno, natureza e pedra).' },
+    ],
+  },
+  {
+    version: '0.10.0',
+    date: '2026-07-20',
+    title: 'Seu status sincroniza com o Slack',
+    items: [
+      { emoji: '🟢', text: 'Novo controle "Meu status" no topo: Disponível, Foco, Reunião, Almoço, Casa.' },
+      { emoji: '🔗', text: 'Ligando a integração (em Personalizar), seu status vai para o Slack — muda o recado, o emoji e o "não perturbe".' },
+      { emoji: '🔒', text: 'É opt-in: o app só fala com o Slack depois que você cola seu token e liga. O token fica só no seu PC.' },
     ],
   },
   {
@@ -666,6 +685,60 @@ function timelineAll(dir) {
   return { sessions: info, timeline: merged.slice(-80) };
 }
 
+// ---- Integração com o Slack (opt-in) --------------------------------------
+// O app só chama a API do Slack quando o usuário liga a integração e cola o
+// token dele. Mapeia "meu status" -> status do Slack (texto+emoji) e DND.
+const SLACK_MAP = {
+  disponivel: { text: '', emoji: '', dnd: 0 },
+  foco: { text: 'Em foco', emoji: ':dart:', dnd: 60 },
+  reuniao: { text: 'Em reunião', emoji: ':calendar:', dnd: 0 },
+  almoco: { text: 'Almoçando', emoji: ':knife_fork_plate:', dnd: 45 },
+  casa: { text: 'Fora do escritório', emoji: ':house_with_garden:', dnd: 0 },
+};
+async function slackCall(method, token, body, isForm) {
+  const res = await fetch('https://slack.com/api/' + method, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'Content-Type': isForm
+        ? 'application/x-www-form-urlencoded'
+        : 'application/json; charset=utf-8',
+    },
+    body: isForm ? new URLSearchParams(body).toString() : JSON.stringify(body),
+  });
+  return res.json();
+}
+async function slackTest(token) {
+  try {
+    const r = await slackCall('auth.test', token, {});
+    return r.ok ? { ok: true, user: r.user, team: r.team } : { ok: false, error: r.error };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+async function slackApply(token, status) {
+  const m = SLACK_MAP[status] || SLACK_MAP.disponivel;
+  try {
+    const p = await slackCall('users.profile.set', token, {
+      profile: { status_text: m.text, status_emoji: m.emoji, status_expiration: 0 },
+    });
+    if (!p.ok) return { ok: false, error: p.error };
+    if (m.dnd > 0) await slackCall('dnd.setSnooze', token, { num_minutes: m.dnd }, true);
+    else await slackCall('dnd.endSnooze', token, {}, true);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+// Nunca envia o token do Slack ao cliente — só se ele está configurado.
+function redactPrefs(p) {
+  return { ...p, slack: { enabled: !!(p.slack && p.slack.enabled),
+    hasToken: !!(p.slack && p.slack.token) } };
+}
+function readBody(req) {
+  return new Promise((resolve) => {
+    let b = '';
+    req.on('data', (c) => { b += c; if (b.length > 1e5) req.destroy(); });
+    req.on('end', () => { try { resolve(JSON.parse(b || '{}')); } catch { resolve({}); } });
+  });
+}
+
 // ---- HTTP -----------------------------------------------------------------
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
@@ -705,11 +778,27 @@ const server = http.createServer((req, res) => {
       req.on('end', () => {
         let next = {};
         try { next = JSON.parse(body || '{}'); } catch {}
-        json(writePrefs(next));
+        json(redactPrefs(writePrefs(next)));
       });
       return;
     }
-    json(readPrefs());
+    json(redactPrefs(readPrefs()));
+    return;
+  }
+  if (url.pathname === '/slack/test' && req.method === 'POST') {
+    readBody(req).then((b) => {
+      const token = (b.token || readPrefs().slack.token || '').trim();
+      if (!token) { json({ ok: false, error: 'sem_token' }); return; }
+      slackTest(token).then(json);
+    });
+    return;
+  }
+  if (url.pathname === '/slack/apply' && req.method === 'POST') {
+    readBody(req).then((b) => {
+      const p = readPrefs();
+      if (!p.slack.enabled || !p.slack.token) { json({ ok: false, error: 'desativado' }); return; }
+      slackApply(p.slack.token, b.status || 'disponivel').then(json);
+    });
     return;
   }
   if (url.pathname === '/state') {
@@ -821,6 +910,25 @@ const HTML = /* html */ `<!doctype html>
   .seg button.active{background:var(--panel2);color:var(--text)}
   button.theme{background:var(--panel2);color:var(--text);border:1px solid var(--line);
     border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px}
+  .mystatus{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:3px 8px 3px 10px}
+  .mystatus select{background:transparent;color:var(--text);border:0;font-size:13px;cursor:pointer;outline:none}
+  .msdot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 16px;
+    font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .toast.hidden{display:none}
+  .toast.err{border-color:#ef4444;color:#fca5a5}
+  .toast.ok{border-color:var(--ok)}
+  .slackbox{border:1px solid var(--line);border-radius:11px;padding:12px;background:var(--panel2)}
+  .slackbox .row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .slackbox input[type=password],.slackbox input[type=text]{flex:1;min-width:180px;background:var(--panel);
+    color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px}
+  .slackbox button{background:var(--think);color:#0b0d12;border:0;border-radius:8px;padding:7px 12px;
+    cursor:pointer;font-weight:640;font-size:12.5px}
+  .slackbox button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+  .slackbox .st{font-size:12px;color:var(--muted)}
+  .slackbox .st.ok{color:var(--ok)}
   select.proj{background:var(--panel2);color:var(--text);border:1px solid var(--line);
     border-radius:8px;padding:6px 10px;font-size:13px;max-width:230px;cursor:pointer}
   main{padding:20px;max-width:1400px;margin:0 auto}
@@ -985,9 +1093,20 @@ const HTML = /* html */ `<!doctype html>
     <button data-view="room" class="active">🏠 Sala</button>
     <button data-view="diagram">🌳 Diagrama</button>
   </div>
+  <label class="mystatus" title="Seu status (sincroniza com o Slack se ligado)">
+    <span id="myStatusDot" class="msdot"></span>
+    <select id="myStatus">
+      <option value="disponivel">🟢 Disponível</option>
+      <option value="foco">🎯 Foco</option>
+      <option value="reuniao">💬 Reunião</option>
+      <option value="almoco">🍽️ Almoço</option>
+      <option value="casa">🏠 Casa</option>
+    </select>
+  </label>
   <button class="theme" id="settings" title="Personalizar sala e avatares">⚙︎ Personalizar</button>
   <button class="theme" id="theme">☀︎ / ☾</button>
 </header>
+<div id="toast" class="toast hidden"></div>
 <div id="updateBar" class="updatebar hidden">
   <span id="updateMsg">Nova versão disponível.</span>
   <button id="updateBtn">Atualizar agora</button>
@@ -1046,6 +1165,27 @@ const HTML = /* html */ `<!doctype html>
       <div class="credit">
         Arte CC0 — <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Kenney · Roguelike Characters</a>.
         <button id="resetAvatar" class="linkbtn">Restaurar padrão deste agente</button>
+      </div>
+
+      <h3>Integração com o Slack</h3>
+      <p class="hint">Sincroniza o seu status (canto superior) com o Slack. Opcional — o app só liga pra fora quando você ativa.</p>
+      <div class="slackbox">
+        <div class="st" id="slackState">Não configurado.</div>
+        <div class="row">
+          <input type="password" id="slackToken" placeholder="Cole seu token do Slack (xoxp-…)" autocomplete="off" spellcheck="false" />
+          <button id="slackTest" class="ghost">Testar</button>
+        </div>
+        <div class="row">
+          <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer">
+            <input type="checkbox" id="slackEnabled" /> Ligar sincronização
+          </label>
+          <button id="slackSave">Salvar</button>
+        </div>
+        <div class="credit" style="margin-top:10px">
+          Precisa de um token de usuário com escopo <code>users.profile:write</code> (e <code>dnd:write</code> para o "não perturbe").
+          <a href="https://api.slack.com/apps" target="_blank" rel="noreferrer">Criar/gerenciar app do Slack</a>.
+          O token fica salvo só no seu PC.
+        </div>
       </div>
     </div>
   </div>
@@ -2053,6 +2193,7 @@ const HTML = /* html */ `<!doctype html>
   });
 
   function openModal(){ renderRooms(); renderChips(); drawPicker(); retryPickerIfNeeded();
+    if(typeof paintSlack==='function') paintSlack();
     modal.classList.remove('hidden'); }
   function closeModal(){ modal.classList.add('hidden'); }
   document.getElementById('settings').onclick=openModal;
@@ -2111,7 +2252,56 @@ const HTML = /* html */ `<!doctype html>
     }).catch(function(){});
   }
 
-  loadPrefs().then(function(){ loadProjects(); maybeWhatsNew(); });
+  // ---- Meu status + integração Slack ------------------------------------
+  var toastEl=document.getElementById('toast'), toastTimer=null;
+  function toast(msg, kind){ toastEl.textContent=msg; toastEl.className='toast '+(kind||'');
+    clearTimeout(toastTimer); toastTimer=setTimeout(function(){ toastEl.classList.add('hidden'); }, 3200); }
+  var MYDOT={ disponivel:'#16a34a', foco:'#f59e0b', reuniao:'#38bdf8', almoco:'#f59e0b', casa:'#94a3b8' };
+  var myStatusSel=document.getElementById('myStatus'), myDot=document.getElementById('myStatusDot');
+  function paintMyStatus(){ var v=(PREFS.myStatus||'disponivel'); myStatusSel.value=v;
+    myDot.style.background=MYDOT[v]||'#16a34a'; }
+  myStatusSel.addEventListener('change', function(){
+    PREFS.myStatus=this.value; savePrefs(); paintMyStatus();
+    if(PREFS.slack && PREFS.slack.enabled){
+      fetch('/slack/apply',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({status:PREFS.myStatus})}).then(function(r){return r.json();}).then(function(d){
+        if(d.ok) toast('Status atualizado no Slack ✓','ok');
+        else toast('Slack: '+(d.error||'falhou'),'err');
+      }).catch(function(){ toast('Não consegui falar com o Slack','err'); });
+    }
+  });
+
+  var slackToken=document.getElementById('slackToken'), slackEnabled=document.getElementById('slackEnabled'),
+      slackState=document.getElementById('slackState');
+  function paintSlack(){
+    var s=PREFS.slack||{}; slackEnabled.checked=!!s.enabled;
+    slackState.textContent = s.hasToken ? (s.enabled?'Conectado e sincronizando.':'Token salvo (sincronização desligada).')
+      : 'Não configurado.';
+    slackState.className = 'st '+(s.hasToken&&s.enabled?'ok':'');
+  }
+  document.getElementById('slackTest').addEventListener('click', function(){
+    var tok=slackToken.value.trim();
+    toast('Testando conexão…');
+    fetch('/slack/test',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({token:tok})}).then(function(r){return r.json();}).then(function(d){
+      if(d.ok) toast('Conectado como '+d.user+' ('+d.team+') ✓','ok');
+      else toast('Falhou: '+(d.error||'token inválido'),'err');
+    }).catch(function(){ toast('Erro ao testar','err'); });
+  });
+  document.getElementById('slackSave').addEventListener('click', function(){
+    var tok=slackToken.value.trim();
+    var payload={ slack:{ enabled: slackEnabled.checked } };
+    if(tok) payload.slack.token=tok; // só envia token se digitou um novo
+    fetch('/prefs',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
+      PREFS.slack=d.slack; slackToken.value=''; paintSlack();
+      toast('Preferências do Slack salvas ✓','ok');
+      // aplica já o status atual, se ligou
+      if(PREFS.slack.enabled) myStatusSel.dispatchEvent(new Event('change'));
+    }).catch(function(){ toast('Erro ao salvar','err'); });
+  });
+
+  loadPrefs().then(function(){ loadProjects(); maybeWhatsNew(); paintMyStatus(); paintSlack(); });
   setInterval(tick, 2000);
 </script>
 </body>
