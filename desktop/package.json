@@ -1,7 +1,7 @@
 {
   "name": "sala-dos-agentes",
   "productName": "Sala dos Agentes",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Observador local (zero token) dos agentes do Claude Code",
   "type": "module",
   "main": "main.mjs",

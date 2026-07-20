@@ -198,6 +198,16 @@ const CHANGELOG = [
     ],
   },
   {
+    version: '0.6.0',
+    date: '2026-07-20',
+    title: 'Escritório por áreas — Diretoria, Pesquisa, Dados e Chamados',
+    items: [
+      { emoji: '🏢', text: 'O mapa virou um escritório dividido em áreas: Diretoria, Pesquisa, Dados e Chamados — cada agente na sua área.' },
+      { emoji: '🎨', text: 'Cada área tem cor, piso e móveis próprios (plantas, estante, quadro), com letreiro e contador de quantos agentes estão ativos.' },
+      { emoji: '💡', text: 'A área acende quando algum agente dela está trabalhando; o balão mostra o que ele está fazendo.' },
+    ],
+  },
+  {
     version: '0.5.0',
     date: '2026-07-20',
     title: 'O mapa do time — cada agente na sua salinha',
@@ -1203,17 +1213,48 @@ const HTML = /* html */ `<!doctype html>
       ctx.font='11px ui-sans-serif'; ctx.fillText('✓ concluído', cx, feet+34); }
   }
 
-  // ---- Mapa principal: um prédio com a salinha de cada agente -----------
-  var PSC = 3, PT = 16*PSC;              // escala e tile
-  var CELL_W = 4*PT, CELL_H = 5*PT;      // salinha (com letreiro + porta)
-  var GAP = 16;                          // corredor entre salinhas
-  var HD = 24;                           // altura do letreiro
+  // ---- Mapa principal: escritório dividido em áreas (estilo Habbo) ------
+  var PSC = 3, PT = 16*PSC;   // escala e tile
+  var GAP = 16;               // corredor entre áreas
+  var ZHEAD = 28;             // altura do letreiro da área
+  var ZPAD = 14;              // respiro interno da área
+  var MZ = 2.3;               // escala das estações dentro da área
+  var MS_W = 132, MS_H = 122; // célula de estação (compacta)
 
-  function officeCols(w){ return Math.max(1, Math.floor((w+GAP)/(CELL_W+GAP))); }
-  function officeSize(w){
-    var n=ROSTER.length, cols=Math.min(officeCols(w), n), rows=Math.ceil(n/cols);
-    return { cols:cols, rows:rows, h: PT+10 + rows*CELL_H + (rows-1)*GAP + 20 };
+  // Áreas do escritório e quais papéis moram em cada uma.
+  var ZONES = [
+    { id:'diretoria', name:'Diretoria', emoji:'🏛️', color:'#6366f1',
+      roles:['orquestrador','pm-lead','pm-growth','pm-core'] },
+    { id:'pesquisa', name:'Pesquisa', emoji:'🔬', color:'#0891b2',
+      roles:['pesquisador','designer','lead-design'] },
+    { id:'dados', name:'Dados', emoji:'📊', color:'#059669',
+      roles:['pa','pos-release'] },
+    { id:'chamados', name:'Chamados', emoji:'🎫', color:'#ea580c',
+      roles:['po','qa','cs-implantacao','conformidade-iso'] },
+  ];
+  function rosterMeta(type){
+    for(var i=0;i<ROSTER.length;i++) if(ROSTER[i].type===type) return ROSTER[i];
+    return { type:type, name:type, color:'#64748b' };
   }
+
+  // Layout (masonry) das áreas para uma largura; usado no dimensionamento e no render.
+  function computeZoneLayout(w){
+    var cols = w>=820 ? 2 : 1;
+    var zw = Math.floor((w - (cols+1)*GAP) / cols);
+    var deskCols = Math.max(1, Math.floor((zw - 2*ZPAD) / MS_W));
+    var colY=[]; for(var i=0;i<cols;i++) colY[i]=GAP;
+    var items=[];
+    ZONES.forEach(function(z){
+      var n=z.roles.length, rows=Math.ceil(n/deskCols);
+      var zh = ZHEAD + ZPAD + 16 + rows*MS_H + ZPAD;
+      var c=0; for(var k=1;k<cols;k++) if(colY[k]<colY[c]) c=k;
+      items.push({ z:z, x:GAP+c*(zw+GAP), y:colY[c], w:zw, h:zh, deskCols:deskCols });
+      colY[c]+=zh+GAP;
+    });
+    var H=0; for(var j=0;j<cols;j++) H=Math.max(H,colY[j]);
+    return { items:items, height:H+4, deskCols:deskCols };
+  }
+  function officeSize(w){ return { h: computeZoneLayout(w).height }; }
 
   // Piso do prédio (corredores) — piso PA cinza ou tema da sala escolhida.
   function drawBuildingFloor(w,h){
@@ -1236,75 +1277,97 @@ const HTML = /* html */ `<!doctype html>
     ctx.restore();
   }
 
-  // Uma salinha por papel: letreiro + paredes + porta + agente na mesa.
-  function drawRoomCell(role, gx, gy, t){
-    var st = stateForRole(role.type);
-    var active = st.status==='working' || st.status==='thinking';
-    var off = st.status==='off';
-    var rx=gx, ry=gy, rw=CELL_W, rh=CELL_H;
-    var bodyY=ry+HD, bodyH=rh-HD;
-    // corpo (piso interno)
-    fillRoomFloor(rx, bodyY, rw, bodyH);
-    // parede: borda + porta (gap embaixo, ao centro)
-    ctx.save();
-    ctx.lineWidth = active?3:2;
-    ctx.strokeStyle = active ? role.color : (off? 'rgba(120,130,145,.5)' : 'rgba(120,130,145,.8)');
-    if(active){ ctx.shadowColor=role.color; ctx.shadowBlur=12; }
-    var doorW=1.6*PT, dl=rx+rw/2-doorW/2, dr=rx+rw/2+doorW/2;
-    ctx.beginPath();
-    ctx.moveTo(dl, ry+rh); ctx.lineTo(rx+7, ry+rh); ctx.arcTo(rx,ry+rh,rx,ry+rh-7,7);
-    ctx.lineTo(rx, bodyY); ctx.lineTo(rx+rw, bodyY); ctx.lineTo(rx+rw, ry+rh-7);
-    ctx.arcTo(rx+rw,ry+rh,rx+rw-7,ry+rh,7); ctx.lineTo(dr, ry+rh);
-    ctx.stroke(); ctx.restore();
-    // capacho na porta
-    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(dl, ry+rh-4, doorW, 6);
-    // letreiro
-    ctx.save(); roundRect(rx, ry, rw, HD, 7); ctx.clip();
-    ctx.fillStyle = active ? role.color : (off?'#3a4150':'#2b3140');
-    ctx.fillRect(rx,ry,rw,HD);
-    ctx.restore();
-    ctx.fillStyle = active ? '#0b0d12' : (off?'#8b96a8':'#dfe5ee');
-    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='700 12px ui-sans-serif,system-ui';
-    ctx.fillText(role.name, rx+rw/2, ry+HD/2+1);
-
-    // ---- estação de trabalho dentro da salinha ----
-    var wx=rx+rw/2, deskBottom=ry+rh-PT*0.55;
-    var deskW=48*PSC*0.9, deskH=32*PSC*0.9, deskX=wx-deskW/2, deskY=deskBottom-deskH;
-    var bob = active ? Math.round(Math.sin(t/220+gx)*1.5) : 0;
-    var aw=16*PSC*0.9, ah=32*PSC*0.9, ax=wx-aw/2, ay=(deskY+9*PSC)-ah-bob;
-    if(PA.chair.complete) ctx.drawImage(PA.chair, wx-8*PSC*0.9, ay+4*PSC, 16*PSC*0.9, 16*PSC*0.9);
-    var img=charFor(role.type);
+  // Estação compacta (um agente) dentro de uma área.
+  function drawMiniStation(type, cx, deskBottom, t){
+    var st=stateForRole(type), meta=rosterMeta(type);
+    var active = st.status==='working' || st.status==='thinking', off=st.status==='off';
+    var deskW=48*MZ, deskH=32*MZ, deskX=cx-deskW/2, deskY=deskBottom-deskH;
+    var bob = active ? Math.round(Math.sin(t/220+cx)*1.4) : 0;
+    var aw=16*MZ, ah=32*MZ, ax=cx-aw/2, ay=(deskY+8*MZ)-ah-bob;
+    if(PA.chair.complete) ctx.drawImage(PA.chair, cx-8*MZ, ay+4*MZ, 16*MZ, 16*MZ);
+    var img=charFor(type);
     ctx.save(); ctx.globalAlpha = off?0.5 : (st.status==='idle'?0.75:1);
     if(img && img.complete) ctx.drawImage(img,0,0,16,32, ax,ay,aw,ah);
-    else { ctx.fillStyle=role.color; ctx.fillRect(ax,ay,aw,ah); }
+    else { ctx.fillStyle=meta.color; ctx.fillRect(ax,ay,aw,ah); }
     ctx.restore();
     if(PA.desk.complete) ctx.drawImage(PA.desk, deskX, deskY, deskW, deskH);
-    var ps=PSC*0.72, pw=16*ps, ph=32*ps, px=wx+7*PSC, py=(deskY+16*PSC)-ph;
+    var ps=MZ*0.8, pw=16*ps, ph=32*ps, px=cx+6*MZ, py=(deskY+15*MZ)-ph;
     var pcImg = active ? PA.pcOn[Math.floor(t/220)%3] : PA.pcOff;
     if(pcImg && pcImg.complete) ctx.drawImage(pcImg, px, py, pw, ph);
+    // ponto de status
+    ctx.fillStyle=statusColor(st.status==='off'?'idle':st.status);
+    ctx.beginPath(); ctx.arc(ax+aw-3, ay+6, 4, 0, 7); ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=1; ctx.stroke();
+    // nome
+    ctx.fillStyle= off? 'rgba(200,208,220,.7)' : cssVar('--text');
+    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font='650 11.5px ui-sans-serif,system-ui';
+    ctx.fillText(meta.name, cx, deskBottom+3);
     // balão / estado
-    if(active && st.doing) bubble(wx, ay+2, st.doing);
-    else if(st.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.font='11px ui-sans-serif';
-      ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('✓ concluído', wx, deskBottom+4); }
-    else if(off){ ctx.fillStyle='rgba(139,150,168,.7)'; ctx.font='10px ui-sans-serif';
-      ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('· inativo ·', wx, deskBottom+4); }
+    if(active && st.doing) bubble(cx, ay+2, st.doing);
+    else if(st.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.font='10.5px ui-sans-serif';
+      ctx.fillText('✓ concluído', cx, deskBottom+17); }
+  }
+
+  // Uma área do escritório: piso próprio + letreiro + paredes + os agentes dela.
+  function drawZone(item, t){
+    var z=item.z, x=item.x, y=item.y, w=item.w, h=item.h;
+    var bodyY=y+ZHEAD, bodyH=h-ZHEAD;
+    var anyActive=false, actives=0;
+    z.roles.forEach(function(r){ var s=stateForRole(r).status;
+      if(s==='working'||s==='thinking'){anyActive=true;actives++;} });
+    // piso da área (cinza PA) + tinta da cor da área
+    fillRoomFloor(x, bodyY, w, bodyH);
+    ctx.save(); roundRect(x,bodyY,w,bodyH,8); ctx.clip();
+    ctx.fillStyle=z.color; ctx.globalAlpha=0.12; ctx.fillRect(x,bodyY,w,bodyH);
+    // tapete central
+    ctx.globalAlpha=0.16; roundRect(x+18,bodyY+14,w-36,bodyH-28,10); ctx.fill();
+    ctx.restore();
+    // decoração de canto (planta)
+    if(PA.plant.complete) ctx.drawImage(PA.plant, x+w-16*2-8, y+h-32*2-6, 16*2, 32*2);
+    if(z.id==='pesquisa' && PA.bookshelf.complete) ctx.drawImage(PA.bookshelf, x+10, bodyY+8, 32*2, 16*2);
+    if(z.id==='diretoria' && PA.whiteboard.complete) ctx.drawImage(PA.whiteboard, x+10, bodyY+8, 32*1.6, 32*1.6);
+    // paredes + porta
+    ctx.save(); ctx.lineWidth=anyActive?3:2;
+    ctx.strokeStyle = anyActive ? z.color : 'rgba(120,130,145,.7)';
+    if(anyActive){ ctx.shadowColor=z.color; ctx.shadowBlur=12; }
+    var doorW=2*PT, dl=x+w/2-doorW/2, dr=x+w/2+doorW/2;
+    ctx.beginPath();
+    ctx.moveTo(dl,y+h); ctx.lineTo(x+8,y+h); ctx.arcTo(x,y+h,x,y+h-8,8);
+    ctx.lineTo(x,bodyY); ctx.lineTo(x+w,bodyY); ctx.lineTo(x+w,y+h-8);
+    ctx.arcTo(x+w,y+h,x+w-8,y+h,8); ctx.lineTo(dr,y+h);
+    ctx.stroke(); ctx.restore();
+    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(dl,y+h-4,doorW,6);
+    // letreiro
+    ctx.save(); roundRect(x,y,w,ZHEAD,8); ctx.clip();
+    ctx.fillStyle=z.color; ctx.globalAlpha=anyActive?1:0.85; ctx.fillRect(x,y,w,ZHEAD);
+    ctx.restore();
+    ctx.fillStyle='#0b0d12'; ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.font='800 13px ui-sans-serif,system-ui';
+    ctx.fillText(z.emoji+'  '+z.name, x+12, y+ZHEAD/2+1);
+    ctx.textAlign='right'; ctx.font='700 11px ui-sans-serif,system-ui'; ctx.globalAlpha=.8;
+    ctx.fillText(actives+'/'+z.roles.length+' ativos', x+w-12, y+ZHEAD/2+1); ctx.globalAlpha=1;
+    // estações dos agentes da área
+    var dc=item.deskCols, gridW=Math.min(dc,z.roles.length)*MS_W;
+    var ox=x+(w-gridW)/2;
+    z.roles.forEach(function(type,i){
+      var col=i%dc, row=Math.floor(i/dc);
+      var cx=ox+col*MS_W+MS_W/2;
+      var deskBottom=bodyY+ZPAD+16+row*MS_H+MS_H-24;
+      drawMiniStation(type, cx, deskBottom, t);
+    });
   }
 
   function drawOffice(cssW, cssH, t){
     ctx.imageSmoothingEnabled=false;
     drawBuildingFloor(cssW, cssH);
-    var n=ROSTER.length, cols=Math.min(officeCols(cssW), n);
-    var gridW=cols*CELL_W+(cols-1)*GAP, ox=Math.round((cssW-gridW)/2), startY=PT+10;
-    for(var i=0;i<n;i++){
-      var r=Math.floor(i/cols), c=i%cols;
-      drawRoomCell(ROSTER[i], ox+c*(CELL_W+GAP), startY+r*(CELL_H+GAP), t);
-    }
+    var L=computeZoneLayout(cssW);
+    L.items.forEach(function(item){ drawZone(item, t); });
   }
 
   function drawRoom(t){
     if(view==='room'){
       var wrap = canvas.parentElement;
-      var cssW = Math.max(wrap.clientWidth-20, CELL_W+40);
+      var cssW = Math.max(wrap.clientWidth-20, 360);
       var sz = officeSize(cssW);
       var cssH = Math.max(320, sz.h);
       var dpr = window.devicePixelRatio || 1;
@@ -1319,8 +1382,8 @@ const HTML = /* html */ `<!doctype html>
   }
   requestAnimationFrame(drawRoom);
   // Exposto para verificação fora do rAF (aba sem foco estrangula o loop).
-  window.__renderOffice = function(){
-    var wrap=canvas.parentElement, cssW=Math.max((wrap?wrap.clientWidth:900)-20, CELL_W+40);
+  window.__renderOffice = function(forceW){
+    var wrap=canvas.parentElement, cssW=forceW||Math.max((wrap?wrap.clientWidth:900)-20, 360);
     var sz=officeSize(cssW), cssH=Math.max(320,sz.h);
     canvas.width=cssW; canvas.height=cssH; canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
     ctx.setTransform(1,0,0,1,0,0); drawOffice(cssW,cssH, Date.now());
