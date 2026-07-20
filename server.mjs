@@ -198,6 +198,17 @@ const CHANGELOG = [
     ],
   },
   {
+    version: '0.4.0',
+    date: '2026-07-20',
+    title: 'Escritório de verdade — cada agente na sua mesa',
+    items: [
+      { emoji: '🧑‍💻', text: 'Nova visão de sala: um escritório em grade onde cada agente senta na PRÓPRIA mesa, com computador.' },
+      { emoji: '🟢', text: 'O monitor liga e anima quando o agente está trabalhando, e desliga quando ele está ocioso.' },
+      { emoji: '🧑‍🤝‍🧑', text: 'Personagens novos e variados (pack Metro City) — escolha o de cada agente em ⚙︎ Personalizar.' },
+      { emoji: '🎨', text: 'Arte de escritório do projeto open-source Pixel Agents (MIT); crédito no rodapé.' },
+    ],
+  },
+  {
     version: '0.3.0',
     date: '2026-07-20',
     title: 'Salas com cara de verdade',
@@ -629,6 +640,19 @@ const server = http.createServer((req, res) => {
     }
     return;
   }
+  if (url.pathname.startsWith('/pa/')) {
+    // assets do escritório (pack MIT Pixel Agents) — só PNGs da pasta assets/pa
+    const name = path.basename(url.pathname).replace(/[^a-zA-Z0-9_.-]/g, '');
+    if (/\.png$/.test(name)) {
+      try {
+        const png = fs.readFileSync(path.join(HERE, 'assets', 'pa', name));
+        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=3600' });
+        res.end(png);
+        return;
+      } catch {}
+    }
+    res.writeHead(404); res.end('pa ausente'); return;
+  }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(HTML);
 });
@@ -841,7 +865,7 @@ const HTML = /* html */ `<!doctype html>
   <footer class="foot">
     <span id="verLabel">Sala dos Agentes</span>
     <span class="dotsep">·</span>
-    <span>Arte: Roguelike <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Characters</a> + <a href="https://kenney.nl/assets/roguelike-indoors" target="_blank" rel="noreferrer">Indoors</a> + <a href="https://kenney.nl/assets/roguelike-rpg-pack" target="_blank" rel="noreferrer">RPG</a> por <a href="https://kenney.nl" target="_blank" rel="noreferrer">Kenney</a> (CC0)</span>
+    <span>Arte: escritório e personagens de <a href="https://github.com/pablodelucca/pixel-agents" target="_blank" rel="noreferrer">Pixel Agents</a> (MIT) — chars <em>Metro City</em> por JIK-A-4; cenários <a href="https://kenney.nl" target="_blank" rel="noreferrer">Kenney</a> (CC0)</span>
   </footer>
 </main>
 
@@ -856,7 +880,7 @@ const HTML = /* html */ `<!doctype html>
       <div id="roomList" class="roomlist"></div>
 
       <h3>Avatar por agente</h3>
-      <p class="hint">Escolha o agente e clique num personagem na folha abaixo.</p>
+      <p class="hint">Escolha o agente (abaixo) e clique no personagem que ele deve usar.</p>
       <div id="agentChips" class="chips"></div>
       <div class="pickerwrap">
         <canvas id="picker"></canvas>
@@ -910,6 +934,31 @@ const HTML = /* html */ `<!doctype html>
   tiles2.src = '/tiles2.png';
   function sheetOf(name){ return name==='rpg' ? tiles2 : tiles; }
   function sheetReadyOf(name){ return name==='rpg' ? tiles2Ready : tilesReady; }
+
+  // ---- assets do escritório (pack MIT "Pixel Agents", personagens Metro City)
+  function paImg(file){ var i=new Image(); i.src='/pa/'+file+'.png'; return i; }
+  var PA = {
+    floor: paImg('floor_0'), floorGrass: null,
+    wall: paImg('wall_0'),
+    desk: paImg('DESK_FRONT'),
+    chair: paImg('CUSHIONED_CHAIR_BACK'),
+    pcOff: paImg('PC_FRONT_OFF'),
+    pcOn: [paImg('PC_FRONT_ON_1'), paImg('PC_FRONT_ON_2'), paImg('PC_FRONT_ON_3')],
+    plant: paImg('PLANT'), largePlant: paImg('LARGE_PLANT'),
+    whiteboard: paImg('WHITEBOARD'), bookshelf: paImg('BOOKSHELF'),
+    chars: [paImg('char_0'),paImg('char_1'),paImg('char_2'),paImg('char_3'),paImg('char_4'),paImg('char_5')],
+  };
+  // papel -> índice do personagem (0..5). O usuário pode trocar em Personalizar.
+  var CHAR_BY_ROLE = { orquestrador:0, pm:2, 'pm-lead':2, 'pm-growth':2, 'pm-core':3,
+    pesquisador:4, po:1, pa:5, designer:1, 'lead-design':3, qa:0, 'pos-release':4,
+    'cs-implantacao':5, Explore:2, Plan:3, 'general-purpose':0, claude:4 };
+  function charFor(role){
+    var o = PREFS.avatars && PREFS.avatars[role];
+    if(typeof o==='number' && o>=0 && o<6) return PA.chars[o];
+    var idx = CHAR_BY_ROLE[role]; if(idx==null) idx = Math.abs(hashStr(role))%6;
+    return PA.chars[idx];
+  }
+  function hashStr(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i)|0;} return h; }
 
   // Preferências (sala + avatares) — carregadas de /prefs, salvas no PC.
   var PREFS = { room:'escritorio', avatars:{} };
@@ -1115,27 +1164,108 @@ const HTML = /* html */ `<!doctype html>
       ctx.font='11px ui-sans-serif'; ctx.fillText('✓ concluído', cx, feet+34); }
   }
 
+  // ---- Escritório em grade (estilo Pixel Agents) ------------------------
+  var PSC = 3, PT = 16*PSC;          // escala e tile do escritório
+  var CELL_W = 4*PT, CELL_H = 4*PT;  // baia = 4x4 tiles
+  var COL_GAP = 18, ROW_GAP = 34;    // respiro entre baias (evita balão colidir)
+
+  function officeCols(w){ return Math.max(1, Math.floor((w+COL_GAP) / (CELL_W+COL_GAP))); }
+  function officeSize(n, w){
+    var cols = Math.min(officeCols(w), Math.max(1,n));
+    var rows = Math.ceil(n / cols);
+    return { cols:cols, rows:rows, h: PT + 8 + rows*CELL_H + (rows-1)*ROW_GAP + 26 };
+  }
+
+  // Preenche o piso: tile temático (rpg/indoor) se a sala definir, senão o piso PA.
+  function drawOfficeFloor(w,h){
+    var R = activeRoom || {}, wallH = PT;
+    var sh = R.tileSheet || 'rpg';
+    // parede (topo)
+    if(R.wallTile && sheetReadyOf(sh)){
+      var st=TILE*TS; for(var x=0;x<w;x+=st) ctx.drawImage(sheetOf(sh),R.wallTile[0]*STRIDE,R.wallTile[1]*STRIDE,TILE,TILE,x,wallH-st,st,st);
+    } else if(PA.wall.complete){
+      for(var x=0;x<w;x+=PT) ctx.drawImage(PA.wall,16,0,16,16,x,0,PT,PT);
+    } else { ctx.fillStyle=R.wall||'#333'; ctx.fillRect(0,0,w,wallH); }
+    // piso
+    if(R.floorTile && sheetReadyOf(sh)){
+      var st2=TILE*TS; for(var y=wallH;y<h;y+=st2) for(var x2=0;x2<w;x2+=st2) ctx.drawImage(sheetOf(sh),R.floorTile[0]*STRIDE,R.floorTile[1]*STRIDE,TILE,TILE,x2,y,st2,st2);
+    } else if(PA.floor.complete){
+      for(var y2=wallH;y2<h;y2+=PT) for(var x3=0;x3<w;x3+=PT) ctx.drawImage(PA.floor,0,0,16,16,x3,y2,PT,PT);
+    } else { ctx.fillStyle=R.floor||'#888'; ctx.fillRect(0,wallH,w,h-wallH); }
+  }
+
+  // Desenha uma baia: cadeira + agente + mesa + PC + nome/estado/balão.
+  function drawWorkstation(a, gx, gy, t){
+    var wx = gx + CELL_W/2, deskBottom = gy + CELL_H - PT*0.4;
+    var deskW=48*PSC, deskH=32*PSC, deskX=wx-deskW/2, deskY=deskBottom-deskH;
+    var active = a.status==='working' || a.status==='thinking';
+    var bob = active ? Math.round(Math.sin(t/220 + gx)*1.5) : 0;
+    var aw=16*PSC, ah=32*PSC, ax=wx-aw/2, aBottom=deskY+10*PSC, ay=aBottom-ah - bob;
+    // cadeira
+    if(PA.chair.complete) ctx.drawImage(PA.chair, wx-8*PSC, ay+4*PSC, 16*PSC, 16*PSC);
+    // agente (personagem Metro City, frame frontal parado 16x32)
+    var img = charFor(a.type);
+    ctx.save(); if(!active && (a.status==='idle')) ctx.globalAlpha=.6;
+    if(img && img.complete) ctx.drawImage(img, 0,0,16,32, ax, ay, aw, ah);
+    else { ctx.fillStyle=a.color||'#888'; ctx.fillRect(ax,ay,aw,ah); }
+    ctx.restore();
+    // mesa (oclui parte de baixo)
+    if(PA.desk.complete) ctx.drawImage(PA.desk, deskX, deskY, deskW, deskH);
+    // PC — ligado e animado quando ativo; desligado quando ocioso
+    var ps=PSC*0.8, pw=16*ps, ph=32*ps, px=wx+8*PSC, py=(deskY+18*PSC)-ph;
+    var pcImg = active ? PA.pcOn[Math.floor(t/220)%3] : PA.pcOff;
+    if(pcImg && pcImg.complete) ctx.drawImage(pcImg, px, py, pw, ph);
+    // ponto de status na cadeira/ombro
+    ctx.fillStyle=statusColor(a.status);
+    ctx.beginPath(); ctx.arc(ax+aw-3, ay+7, 4, 0, 7); ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=1; ctx.stroke();
+    // nome (abaixo da mesa)
+    ctx.fillStyle=cssVar('--text'); ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.font='650 12px ui-sans-serif,system-ui'; ctx.fillText(a.name, wx, deskBottom+3);
+    // balão do que está fazendo
+    if(active && a.doing) bubble(wx, ay+4, a.doing);
+    else if(a.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.font='11px ui-sans-serif';
+      ctx.textBaseline='top'; ctx.fillText('✓ concluído', wx, deskBottom+18); }
+  }
+
+  function drawOffice(cssW, cssH, t){
+    ctx.imageSmoothingEnabled=false;
+    drawOfficeFloor(cssW, cssH);
+    var n=S.agents.length, cols=Math.min(officeCols(cssW), Math.max(1,n));
+    var gridW = cols*CELL_W + (cols-1)*COL_GAP, ox=Math.round((cssW-gridW)/2), startY=PT+8;
+    for(var i=0;i<n;i++){
+      var r=Math.floor(i/cols), c=i%cols;
+      drawWorkstation(S.agents[i], ox+c*(CELL_W+COL_GAP), startY+r*(CELL_H+ROW_GAP), t);
+    }
+    if(n===0){ ctx.fillStyle=cssVar('--muted'); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font='13px ui-sans-serif'; ctx.fillText('nenhum agente ativo nesta sessão', cssW/2, cssH/2); }
+  }
+
   function drawRoom(t){
     if(view==='room'){
-      var L = layout(S.agents);
       var wrap = canvas.parentElement;
-      var cssW = Math.max(wrap.clientWidth-20, L.w);
-      var cssH = Math.max(320, L.h);
+      var cssW = Math.max(wrap.clientWidth-20, CELL_W+40);
+      var sz = officeSize(S.agents.length, cssW);
+      var cssH = Math.max(320, sz.h);
       var dpr = window.devicePixelRatio || 1;
       if(canvas.width!==Math.round(cssW*dpr) || canvas.height!==Math.round(cssH*dpr)){
         canvas.width=Math.round(cssW*dpr); canvas.height=Math.round(cssH*dpr);
         canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
       }
       ctx.setTransform(dpr,0,0,dpr,0,0);
-      ctx.imageSmoothingEnabled=false;
-      drawFloor(cssW,cssH);
-      S.edges.forEach(function(e){ var p=L.pos[e.from], c=L.pos[e.to];
-        if(p&&c){ var to=agentBy(e.to); drawEdge(p,c,e.active,t, to?to.color:null); } });
-      S.agents.forEach(function(a){ var p=L.pos[a.id]; if(p) drawAgent(a,p,t); });
+      drawOffice(cssW, cssH, t);
     }
     requestAnimationFrame(drawRoom);
   }
   requestAnimationFrame(drawRoom);
+  // Exposto para verificação fora do rAF (aba sem foco estrangula o loop).
+  window.__renderOffice = function(){
+    var wrap=canvas.parentElement, cssW=Math.max((wrap?wrap.clientWidth:900)-20, CELL_W+40);
+    var sz=officeSize(S.agents.length,cssW), cssH=Math.max(320,sz.h);
+    canvas.width=cssW; canvas.height=cssH; canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
+    ctx.setTransform(1,0,0,1,0,0); drawOffice(cssW,cssH, Date.now());
+    return cssW+'x'+cssH;
+  };
 
   // ---- diagrama (fase 2) ------------------------------------------------
   var N_W=180,N_H=58,C_W=250,R_H=80,PAD=8;
@@ -1277,32 +1407,40 @@ const HTML = /* html */ `<!doctype html>
   });
 
   // Desenha a folha inteira no picker; destaca o tile atual do agente.
-  function drawPicker(){
-    if(!sheetReady){ setTimeout(drawPicker,120); return; }
-    var cols=Math.floor(sheet.width/STRIDE), rows=Math.floor(sheet.height/STRIDE);
-    var w=cols*TILE*PSCALE, h=rows*TILE*PSCALE;
-    picker.width=w; picker.height=h;
-    pctx.imageSmoothingEnabled=false;
-    pctx.clearRect(0,0,w,h);
-    for(var r=0;r<rows;r++) for(var c=0;c<cols;c++){
-      pctx.drawImage(sheet, c*STRIDE, r*STRIDE, TILE, TILE,
-        c*TILE*PSCALE, r*TILE*PSCALE, TILE*PSCALE, TILE*PSCALE);
-    }
-    var cur=spriteFor(selAgent);
-    pctx.strokeStyle='#f59e0b'; pctx.lineWidth=2;
-    pctx.strokeRect(cur[0]*TILE*PSCALE+1, cur[1]*TILE*PSCALE+1, TILE*PSCALE-2, TILE*PSCALE-2);
+  // Picker de personagem: mostra os 6 personagens (frame frontal) lado a lado.
+  function currentCharIdx(){
+    var o = PREFS.avatars && PREFS.avatars[selAgent];
+    if(typeof o==='number') return o;
+    var idx = CHAR_BY_ROLE[selAgent]; return idx==null ? (Math.abs(hashStr(selAgent))%6) : idx;
   }
+  function drawPicker(){
+    var CS=4, cw=16*CS, chh=32*CS, gap=16, pad=8;
+    var w=pad*2 + 6*cw + 5*gap, h=pad*2 + chh;
+    picker.width=w; picker.height=h;
+    pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,w,h);
+    var cur=currentCharIdx();
+    for(var i=0;i<6;i++){
+      var x=pad+i*(cw+gap), im=PA.chars[i];
+      if(i===cur){ pctx.fillStyle='rgba(245,158,11,.18)'; pctx.fillRect(x-4,pad-4,cw+8,chh+8); }
+      if(im && im.complete) pctx.drawImage(im, 0,0,16,32, x, pad, cw, chh);
+      if(i===cur){ pctx.strokeStyle='#f59e0b'; pctx.lineWidth=2; pctx.strokeRect(x-4+1,pad-4+1,cw+8-2,chh+8-2); }
+    }
+    picker.dataset.layout = JSON.stringify({pad:pad,cw:cw,gap:gap});
+  }
+  function retryPickerIfNeeded(){ if(!PA.chars[0].complete){ setTimeout(function(){ drawPicker(); },150); } }
   picker.addEventListener('click', function(e){
+    var CS=4, cw=16*CS, gap=16, pad=8;
     var rect=picker.getBoundingClientRect();
-    var c=Math.floor((e.clientX-rect.left)/(TILE*PSCALE));
-    var r=Math.floor((e.clientY-rect.top)/(TILE*PSCALE));
-    PREFS.avatars[selAgent]=[c,r]; savePrefs(); drawPicker();
+    var scale=picker.width/rect.width;              // canvas px por css px
+    var cx=(e.clientX-rect.left)*scale;
+    var i=Math.floor((cx-pad)/(cw+gap));
+    if(i>=0 && i<6){ PREFS.avatars[selAgent]=i; savePrefs(); drawPicker(); }
   });
   document.getElementById('resetAvatar').addEventListener('click', function(){
     delete PREFS.avatars[selAgent]; savePrefs(); drawPicker();
   });
 
-  function openModal(){ renderRooms(); renderChips(); drawPicker();
+  function openModal(){ renderRooms(); renderChips(); drawPicker(); retryPickerIfNeeded();
     modal.classList.remove('hidden'); }
   function closeModal(){ modal.classList.add('hidden'); }
   document.getElementById('settings').onclick=openModal;
