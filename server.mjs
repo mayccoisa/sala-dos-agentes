@@ -142,7 +142,7 @@ const ROOMS = [
 // Fonte única do changelog exibido ao usuário — a mais recente aparece primeiro.
 const CHANGELOG = [
   {
-    version: '0.2.0',
+    version: '0.2.1',
     date: '2026-07-20',
     title: 'Deixe a sala com a sua cara',
     items: [
@@ -673,6 +673,7 @@ const HTML = /* html */ `<!doctype html>
   .updatebar button.x{background:transparent;color:var(--muted);margin-left:auto;padding:6px 8px}
   /* modal de personalização */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:50}
+  .modal.hidden{display:none}  /* especificidade > .modal, senão o grid vence o none */
   .modal .sheet{background:var(--panel);border:1px solid var(--line);border-radius:16px;
     width:min(680px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
   .sheethead{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}

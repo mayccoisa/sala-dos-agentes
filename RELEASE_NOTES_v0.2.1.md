@@ -1,6 +1,8 @@
-# Sala dos Agentes v0.2.0 — Deixe a sala com a sua cara
+# Sala dos Agentes v0.2.1 — Deixe a sala com a sua cara
 
 Esta versão traz personalização visual e atualização automática. Depois de instalada, o app passa a se atualizar sozinho — as próximas versões chegam sem baixar nada manualmente.
+
+> **Correção (0.2.1):** os modais (Novidades e Personalizar) apareciam sobrepostos e não fechavam ao clicar. Resolvido.
 
 ## ✨ Novidades
 
