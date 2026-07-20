@@ -39,6 +39,7 @@ function HERE_EARLY() { return path.dirname(fileURLToPath(import.meta.url)); }
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SPRITE_SHEET = path.join(HERE, 'assets', 'characters.png');
 const TILE_SHEET = path.join(HERE, 'assets', 'tiles.png');
+const TILE_SHEET2 = path.join(HERE, 'assets', 'tiles2.png');
 
 // Diretório onde o Claude Code grava os transcripts deste projeto.
 // Portátil: funciona em qualquer PC sem editar nada.
@@ -141,19 +142,24 @@ const ROOMS = [
       { t: [22, 14], x: 0.5, y: 0.14, s: 2.5 }, // quadro/espelho na parede
     ] },
   { id: 'masmorra', name: 'Masmorra', emoji: '🏰',
-    floor: '#2a2620', floor2: '#221f1a', wall: '#171310', rug: '#3a2f1e',
+    rug: '#3a2f1e', tileSheet: 'rpg', floorTile: [7, 2], wallTile: [6, 1],
     deco: [
-      { t: [21, 6], x: 0.12, y: 0.4, s: 2.5 },  // tocha na parede
-      { t: [21, 6], x: 0.88, y: 0.4, s: 2.5 },  // tocha na parede
-      { t: [16, 7], x: 0.2, y: 1.0 },   // candelabro
-      { t: [21, 9], x: 0.85, y: 1.0 },  // escada
+      { t: [15, 8], x: 0.1, y: 1.0, sheet: 'rpg' },   // braseiro com fogo
+      { t: [15, 8], x: 0.9, y: 1.0, sheet: 'rpg' },   // braseiro com fogo
+      { t: [23, 0], x: 0.24, y: 1.0, sheet: 'rpg' },  // barril
+      { t: [24, 0], x: 0.76, y: 1.0, sheet: 'rpg' },  // barril
+      { t: [14, 0], x: 0.5, y: 1.0, sheet: 'rpg' },   // lareira acesa
     ] },
   { id: 'floresta', name: 'Floresta', emoji: '🌲',
-    floor: '#1f3a24', floor2: '#1a3220', wall: '#16281a', rug: '#255230',
+    rug: '#255230', tileSheet: 'rpg', floorTile: [5, 0],
     deco: [
-      { t: [16, 0], x: 0.08, y: 0.99 }, { t: [17, 0], x: 0.22, y: 1.0 },
-      { t: [16, 0], x: 0.9, y: 0.99 },  { t: [17, 0], x: 0.78, y: 1.0 },
-      { t: [16, 4], x: 0.5, y: 1.0 },
+      { t: [13, 9], x: 0.07, y: 1.0, sheet: 'rpg' },  // árvore
+      { t: [17, 9], x: 0.19, y: 1.0, sheet: 'rpg' },  // pinheiro
+      { t: [19, 9], x: 0.34, y: 1.0, sheet: 'rpg' },  // arbusto
+      { t: [15, 9], x: 0.5, y: 1.0, sheet: 'rpg' },   // árvore
+      { t: [19, 9], x: 0.66, y: 1.0, sheet: 'rpg' },  // arbusto
+      { t: [17, 9], x: 0.81, y: 1.0, sheet: 'rpg' },  // pinheiro
+      { t: [13, 9], x: 0.93, y: 1.0, sheet: 'rpg' },  // árvore
     ] },
   { id: 'nave', name: 'Nave espacial', emoji: '🚀',
     floor: '#20293a', floor2: '#1a2231', wall: '#141a28', rug: '#1c3358',
@@ -183,13 +189,21 @@ const ROOMS = [
 // Fonte única do changelog exibido ao usuário — a mais recente aparece primeiro.
 const CHANGELOG = [
   {
+    version: '0.3.1',
+    date: '2026-07-20',
+    title: 'Floresta e Masmorra de verdade',
+    items: [
+      { emoji: '🌲', text: 'A Floresta agora tem chão de grama e árvores; a Masmorra ganhou piso de pedra, tochas, barris e lareira acesa.' },
+      { emoji: '🖼️', text: 'Novos tiles CC0 do pack Roguelike RPG da Kenney (terreno, natureza e pedra).' },
+    ],
+  },
+  {
     version: '0.3.0',
     date: '2026-07-20',
     title: 'Salas com cara de verdade',
     items: [
-      { emoji: '🏢', text: 'As salas agora têm mobília em pixel-art: o Escritório ganhou mesas, estantes, plantas e quadros — dá pra sentir o ambiente.' },
-      { emoji: '🎨', text: 'Todos os 6 cenários foram redecorados (Escritório, Masmorra, Floresta, Nave, Cafeteria e Neon).' },
-      { emoji: '🖼️', text: 'Arte de móveis CC0 do pack Roguelike Indoors da Kenney, no mesmo estilo dos personagens (crédito no rodapé).' },
+      { emoji: '🏢', text: 'As salas ganharam mobília em pixel-art: o Escritório tem mesas, estantes, plantas e quadros.' },
+      { emoji: '🎨', text: 'Escolha o cenário e o avatar de cada agente em ⚙︎ Personalizar.' },
     ],
   },
   {
@@ -604,6 +618,17 @@ const server = http.createServer((req, res) => {
     }
     return;
   }
+  if (req.url && req.url.startsWith('/tiles2.png')) {
+    try {
+      const png = fs.readFileSync(TILE_SHEET2);
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=3600' });
+      res.end(png);
+    } catch {
+      res.writeHead(404);
+      res.end('tiles2 ausente');
+    }
+    return;
+  }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(HTML);
 });
@@ -816,7 +841,7 @@ const HTML = /* html */ `<!doctype html>
   <footer class="foot">
     <span id="verLabel">Sala dos Agentes</span>
     <span class="dotsep">·</span>
-    <span>Arte: <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Roguelike Characters</a> + <a href="https://kenney.nl/assets/roguelike-indoors" target="_blank" rel="noreferrer">Indoors</a> por <a href="https://kenney.nl" target="_blank" rel="noreferrer">Kenney</a> (CC0)</span>
+    <span>Arte: Roguelike <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Characters</a> + <a href="https://kenney.nl/assets/roguelike-indoors" target="_blank" rel="noreferrer">Indoors</a> + <a href="https://kenney.nl/assets/roguelike-rpg-pack" target="_blank" rel="noreferrer">RPG</a> por <a href="https://kenney.nl" target="_blank" rel="noreferrer">Kenney</a> (CC0)</span>
   </footer>
 </main>
 
@@ -879,6 +904,12 @@ const HTML = /* html */ `<!doctype html>
   var tiles = new Image(); var tilesReady = false;
   tiles.onload = function(){ tilesReady = true; };
   tiles.src = '/tiles.png';
+  // 2ª folha (tileset CC0 Roguelike/RPG pack, Kenney) — terreno, árvores, pedra.
+  var tiles2 = new Image(); var tiles2Ready = false;
+  tiles2.onload = function(){ tiles2Ready = true; };
+  tiles2.src = '/tiles2.png';
+  function sheetOf(name){ return name==='rpg' ? tiles2 : tiles; }
+  function sheetReadyOf(name){ return name==='rpg' ? tiles2Ready : tilesReady; }
 
   // Preferências (sala + avatares) — carregadas de /prefs, salvas no PC.
   var PREFS = { room:'escritorio', avatars:{} };
@@ -955,25 +986,41 @@ const HTML = /* html */ `<!doctype html>
     ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
   }
 
+  // Preenche uma área repetindo um tile [col,row] de uma folha (escala TS).
+  var TS = 3; // 16px -> 48px
+  function tileFill(sheetName, tR, x0, y0, x1, y1){
+    var img=sheetOf(sheetName); if(!sheetReadyOf(sheetName)) return false;
+    var step=TILE*TS;
+    for(var y=y0;y<y1;y+=step) for(var x=x0;x<x1;x+=step)
+      ctx.drawImage(img, tR[0]*STRIDE, tR[1]*STRIDE, TILE, TILE, x, y, step, step);
+    return true;
+  }
+
   function drawFloor(w,h){
     var R = activeRoom || {};
     var wallH = 46;
-    // parede (topo)
-    ctx.fillStyle = R.wall || cssVar('--floor');
-    ctx.fillRect(0,0,w,wallH);
+    var sh = R.tileSheet || 'rpg';
+    // ---- parede (topo) ----
+    var wallDone = R.wallTile && tileFill(sh, R.wallTile, 0, 0-(TILE*TS-wallH), w, wallH);
+    if(!wallDone){ ctx.fillStyle = R.wall || cssVar('--floor'); ctx.fillRect(0,0,w,wallH); }
     // rodapé/faixa entre parede e piso
     ctx.fillStyle = R.rug || cssVar('--floor2');
     ctx.fillRect(0,wallH-4,w,4);
-    // piso xadrez
-    ctx.fillStyle = R.floor || cssVar('--floor'); ctx.fillRect(0,wallH,w,h-wallH);
-    ctx.fillStyle = R.floor2 || cssVar('--floor2');
-    var s=26;
-    for(var y=wallH;y<h;y+=s) for(var x=0;x<w;x+=s)
-      if((Math.floor(x/s)+Math.floor(y/s))%2===0) ctx.fillRect(x,y,s,Math.min(s,h-y));
-    // tapete central (destaque da sala)
-    ctx.save(); ctx.globalAlpha=.5; ctx.fillStyle=R.rug||cssVar('--floor2');
-    var rw=Math.min(w-80,520), rx=(w-rw)/2, ry=wallH+22;
-    roundRect(rx,ry,rw,h-ry-22,14); ctx.fill(); ctx.restore();
+    // ---- piso ----
+    var floorDone = R.floorTile && tileFill(sh, R.floorTile, 0, wallH, w, h);
+    if(!floorDone){
+      ctx.fillStyle = R.floor || cssVar('--floor'); ctx.fillRect(0,wallH,w,h-wallH);
+      ctx.fillStyle = R.floor2 || cssVar('--floor2');
+      var s=26;
+      for(var y=wallH;y<h;y+=s) for(var x=0;x<w;x+=s)
+        if((Math.floor(x/s)+Math.floor(y/s))%2===0) ctx.fillRect(x,y,s,Math.min(s,h-y));
+    }
+    // tapete central (só quando o piso é cor chapada — sobre tile fica poluído)
+    if(!floorDone){
+      ctx.save(); ctx.globalAlpha=.5; ctx.fillStyle=R.rug||cssVar('--floor2');
+      var rw=Math.min(w-80,520), rx=(w-rw)/2, ry=wallH+22;
+      roundRect(rx,ry,rw,h-ry-22,14); ctx.fill(); ctx.restore();
+    }
     // móveis em pixel-art (deco da sala) — desenhados por cima do piso
     drawDeco(w, h);
     ctx.strokeStyle = cssVar('--line'); ctx.lineWidth=1;
@@ -982,16 +1029,17 @@ const HTML = /* html */ `<!doctype html>
 
   // Desenha os móveis da sala a partir do tileset (âncora no pé, centro).
   function drawDeco(w,h){
-    var R = activeRoom || {}; if(!tilesReady || !R.deco) return;
+    var R = activeRoom || {}; if(!R.deco) return;
     for(var i=0;i<R.deco.length;i++){
       var d=R.deco[i], sp=d.t, sc=d.s||3, tw=(d.w||1), th=(d.h||1);
+      var sName=d.sheet||'indoor'; if(!sheetReadyOf(sName)) continue;
       var dw=TILE*sc*tw, dh=TILE*sc*th;
       var cx=d.x*w, feet=d.y*h;
       var dx=Math.round(cx-dw/2), dy=Math.round(feet-dh);
       // sombra leve no chão
       ctx.save(); ctx.fillStyle='rgba(0,0,0,.20)';
       ctx.beginPath(); ctx.ellipse(cx, feet-2, dw*0.4, 5, 0, 0, 7); ctx.fill(); ctx.restore();
-      ctx.drawImage(tiles, sp[0]*STRIDE, sp[1]*STRIDE, TILE*tw, TILE*th, dx, dy, dw, dh);
+      ctx.drawImage(sheetOf(sName), sp[0]*STRIDE, sp[1]*STRIDE, TILE*tw, TILE*th, dx, dy, dw, dh);
     }
   }
 
