@@ -105,8 +105,9 @@ function readPrefs() {
       room: typeof p.room === 'string' ? p.room : 'escritorio',
       avatars: p.avatars && typeof p.avatars === 'object' ? p.avatars : {},
       seenChangelog: typeof p.seenChangelog === 'string' ? p.seenChangelog : '',
+      status: p.status && typeof p.status === 'object' ? p.status : {},
     };
-  } catch { return { room: 'escritorio', avatars: {}, seenChangelog: '' }; }
+  } catch { return { room: 'escritorio', avatars: {}, seenChangelog: '', status: {} }; }
 }
 function writePrefs(next) {
   const cur = readPrefs();
@@ -114,6 +115,8 @@ function writePrefs(next) {
     room: typeof next.room === 'string' ? next.room : cur.room,
     avatars: { ...cur.avatars, ...(next.avatars || {}) },
     seenChangelog: typeof next.seenChangelog === 'string' ? next.seenChangelog : cur.seenChangelog,
+    // status é SUBSTITUÍDO (o cliente envia o mapa completo) — permite remover chaves.
+    status: next.status && typeof next.status === 'object' ? next.status : cur.status,
   };
   try {
     fs.mkdirSync(path.dirname(PREFS_FILE), { recursive: true });
@@ -195,6 +198,17 @@ const CHANGELOG = [
     items: [
       { emoji: '🌲', text: 'A Floresta agora tem chão de grama e árvores; a Masmorra ganhou piso de pedra, tochas, barris e lareira acesa.' },
       { emoji: '🖼️', text: 'Novos tiles CC0 do pack Roguelike RPG da Kenney (terreno, natureza e pedra).' },
+    ],
+  },
+  {
+    version: '0.9.0',
+    date: '2026-07-20',
+    title: 'Status manual — mande o agente almoçar, focar ou ir pra casa',
+    items: [
+      { emoji: '🖱️', text: 'Clique num agente (no mapa ou na lista) para abrir o menu de status.' },
+      { emoji: '🍽️', text: 'Almoço leva o agente para a cantina; Reunião leva pra sala de reunião; Casa tira ele da mesa.' },
+      { emoji: '🎯', text: 'Foco mantém na mesa em modo concentrado. "Automático" volta a seguir o que o chat está fazendo.' },
+      { emoji: '💾', text: 'A escolha fica salva no seu PC. (Sincronizar com o Slack vem numa próxima versão.)' },
     ],
   },
   {
@@ -905,6 +919,17 @@ const HTML = /* html */ `<!doctype html>
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:50}
   .modal.hidden{display:none}  /* especificidade > .modal, senão o grid vence o none */
   .updatebar.hidden{display:none}  /* idem: senão a barra fica sempre visível */
+  /* menu de status ao clicar num agente */
+  #room{cursor:pointer}
+  .statusmenu{position:absolute;z-index:60;background:var(--panel);border:1px solid var(--line);
+    border-radius:11px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:6px;min-width:170px}
+  .statusmenu.hidden{display:none}
+  .statusmenu .hd{font-size:11px;color:var(--muted);padding:4px 8px 6px;font-weight:700}
+  .statusmenu button{display:flex;align-items:center;gap:9px;width:100%;background:transparent;
+    border:0;color:var(--text);padding:7px 8px;border-radius:7px;cursor:pointer;font-size:13px;text-align:left}
+  .statusmenu button:hover{background:var(--panel2)}
+  .statusmenu button.on{background:color-mix(in srgb,var(--accent,#6366f1) 20%,var(--panel2))}
+  .statusmenu button .k{font-size:15px;width:20px;text-align:center}
   .modal .sheet{background:var(--panel);border:1px solid var(--line);border-radius:16px;
     width:min(680px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
   .sheethead{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
@@ -1120,6 +1145,19 @@ const HTML = /* html */ `<!doctype html>
     }
     if(best) return { status:best.status, doing:best.doing, present:true };
     return { status:'off', doing:'', present:false }; // sem agente desse tipo na sessão
+  }
+  // Estado EFETIVO: um status manual (almoço/casa/reunião/foco) vence o do log.
+  var MANUAL_STATUS = ['auto','foco','reuniao','almoco','casa'];
+  function effState(type){
+    var ov = PREFS.status && PREFS.status[type];
+    if(ov && ov!=='auto' && MANUAL_STATUS.indexOf(ov)>=0)
+      return { status:ov, doing:'', manual:true };
+    return stateForRole(type);
+  }
+  function setStatus(type, val){
+    if(!PREFS.status) PREFS.status={};
+    if(val==='auto') delete PREFS.status[type]; else PREFS.status[type]=val;
+    savePrefs();
   }
   function charFor(role){
     var o = PREFS.avatars && PREFS.avatars[role];
@@ -1381,8 +1419,13 @@ const HTML = /* html */ `<!doctype html>
     { id:'cantina', name:'Cantina', emoji:'🍽️', color:'#f59e0b', kind:'cantina' },
     { id:'descanso', name:'Descanso', emoji:'🎮', color:'#ec4899', kind:'lounge' },
   ];
-  function thinkingTypes(){
-    var out=[]; ROSTER.forEach(function(r){ if(stateForRole(r.type).status==='thinking') out.push(r.type); });
+  // Quem vai para a reunião (pensando OU marcado "reunião") e quem vai à cantina.
+  function meetingTypes(){
+    var out=[]; ROSTER.forEach(function(r){ var s=effState(r.type).status;
+      if(s==='thinking'||s==='reuniao') out.push(r.type); }); return out;
+  }
+  function cantinaTypes(){
+    var out=[]; ROSTER.forEach(function(r){ if(effState(r.type).status==='almoco') out.push(r.type); });
     return out;
   }
 
@@ -1463,14 +1506,18 @@ const HTML = /* html */ `<!doctype html>
 
   // Estação compacta (um agente) dentro de uma área.
   function drawMiniStation(type, cx, deskBottom, t){
-    var st=stateForRole(type), meta=rosterMeta(type);
-    var thinking = st.status==='thinking';
+    var st=effState(type), meta=rosterMeta(type);
+    var away = st.status==='thinking' || st.status==='reuniao' || st.status==='almoco' || st.status==='casa';
+    var thinking = st.status==='thinking' || st.status==='reuniao';
     var working = st.status==='working';
+    var foco = st.status==='foco';
     var off=st.status==='off';
     var deskW=48*MZ, deskH=32*MZ, deskX=cx-deskW/2, deskY=deskBottom-deskH;
     var bob = working ? Math.round(Math.sin(t/220+cx)*1.4) : 0;
     var aw=16*MZ, ah=32*MZ, ax=cx-aw/2, ay=(deskY+8*MZ)-ah-bob;
     var pulse = 0.5+0.5*Math.sin(t/300+cx);
+    // área clicável (para o menu de status) — mesa + personagem + plaquinha
+    HITS.push({ type:type, x:cx-MS_W/2+8, y:ay-6, w:MS_W-16, h:(deskBottom+34)-(ay-6) });
 
     // (1) FEEDBACK de trabalhando: halo pulsante no chão + brilho atrás do agente
     if(working){
@@ -1488,8 +1535,8 @@ const HTML = /* html */ `<!doctype html>
     }
 
     if(PA.chair.complete) ctx.drawImage(PA.chair, cx-8*MZ, ay+4*MZ, 16*MZ, 16*MZ);
-    // Agente PENSANDO saiu para a reunião: cadeira vazia.
-    if(!thinking){
+    // Agente ausente (reunião/almoço/casa): cadeira vazia.
+    if(!away){
       var img=charFor(type);
       ctx.save(); ctx.globalAlpha = off?0.5 : (st.status==='idle'?0.75:1);
       if(img && img.complete) ctx.drawImage(img,0,0,16,32, ax,ay,aw,ah);
@@ -1501,33 +1548,37 @@ const HTML = /* html */ `<!doctype html>
     // (3) FERRAMENTA na mesa (por papel), em vez do PC do lado.
     var tool=deskTool(type);
     if(tool.kind==='pc'){
-      var pcImg = working ? PA.pcOn[Math.floor(t/160)%3] : PA.pcOff;
+      var pcImg = (working||foco) ? PA.pcOn[Math.floor(t/160)%3] : PA.pcOff;
       var ph=30*MZ*0.55, pw=16*MZ*0.85, px=cx-pw/2, py=(deskY+6*MZ)-ph*0.55;
       if(pcImg && pcImg.complete) ctx.drawImage(pcImg, px, py, pw, ph);
     } else if(tool.img && tool.img.complete){
       var scale=(deskW*0.5)/tool.sw, iw=tool.sw*scale, ih=tool.sh*scale;
       var ix=cx-iw/2, iy=(deskY+7*MZ)-ih;
-      // leve balanço quando trabalhando
       ctx.drawImage(tool.img, 0,0,tool.sw,tool.sh, ix, iy - (working?Math.round(1+pulse):0), iw, ih);
     }
 
     // (1) indicador de status maior e com brilho
-    var scol=statusColor(off?'idle':st.status);
+    var scol=statusColor(off?'idle':(working||foco?'working':(thinking?'thinking':'idle')));
     ctx.save();
-    if(working||thinking){ ctx.shadowColor=scol; ctx.shadowBlur=8; }
+    if(working||thinking||foco){ ctx.shadowColor=scol; ctx.shadowBlur=8; }
     ctx.fillStyle=scol; ctx.beginPath(); ctx.arc(ax+aw-2, ay+6, working?5.5:4.5, 0, 7); ctx.fill();
     ctx.shadowBlur=0; ctx.strokeStyle='#0b0d12'; ctx.lineWidth=1.5; ctx.stroke();
     ctx.restore();
 
     // (2) plaquinha nome + cargo
-    nameplate(cx, deskBottom+3, meta.person, meta.name, meta.color, off);
+    nameplate(cx, deskBottom+3, meta.person, meta.name, meta.color, off||away);
 
-    // balão / estado (abaixo da plaquinha)
-    if(working && st.doing) bubble(cx, ay+2, st.doing);
-    else if(thinking){ ctx.fillStyle=cssVar('--think'); ctx.textAlign='center'; ctx.textBaseline='top';
-      ctx.font='700 10.5px ui-sans-serif'; ctx.fillText('💭 em reunião', cx, deskBottom+36); }
-    else if(st.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.textAlign='center'; ctx.textBaseline='top';
-      ctx.font='700 10.5px ui-sans-serif'; ctx.fillText('✓ concluído', cx, deskBottom+36); }
+    // rótulo de estado (abaixo da plaquinha)
+    var lbl='', lc=cssVar('--muted');
+    if(working && st.doing){ bubble(cx, ay+2, st.doing); }
+    else if(foco){ lbl='🎯 foco'; lc=cssVar('--work'); }
+    else if(st.status==='reuniao'){ lbl='💬 reunião'; lc=cssVar('--think'); }
+    else if(st.status==='thinking'){ lbl='💭 em reunião'; lc=cssVar('--think'); }
+    else if(st.status==='almoco'){ lbl='🍽️ almoço'; lc='#f59e0b'; }
+    else if(st.status==='casa'){ lbl='🏠 em casa'; lc='#94a3b8'; }
+    else if(st.status==='done'){ lbl='✓ concluído'; }
+    if(lbl){ ctx.fillStyle=lc; ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.font='700 10.5px ui-sans-serif'; ctx.fillText(lbl, cx, deskBottom+36); }
   }
 
   // Uma área do escritório: piso próprio + letreiro + paredes + os agentes dela.
@@ -1535,8 +1586,8 @@ const HTML = /* html */ `<!doctype html>
     var z=item.z, x=item.x, y=item.y, w=item.w, h=item.h;
     var bodyY=y+ZHEAD, bodyH=h-ZHEAD;
     var anyActive=false, actives=0;
-    z.roles.forEach(function(r){ var s=stateForRole(r).status;
-      if(s==='working'||s==='thinking'){anyActive=true;actives++;} });
+    z.roles.forEach(function(r){ var s=effState(r).status;
+      if(s==='working'||s==='thinking'||s==='foco'){anyActive=true;actives++;} });
     // piso da área (cinza PA) + tinta da cor da área
     fillRoomFloor(x, bodyY, w, bodyH);
     ctx.save(); roundRect(x,bodyY,w,bodyH,8); ctx.clip();
@@ -1640,12 +1691,12 @@ const HTML = /* html */ `<!doctype html>
     ctx.font='700 18px ui-sans-serif,system-ui'; ctx.fillText(hh, x+w-18, cy);
   }
 
-  // Área comum: reunião (recebe quem está pensando), cantina ou descanso (2 PCs gamer).
+  // Área comum: reunião (pensando/reunião), cantina (almoço) ou descanso (2 PCs gamer).
   function drawCommonRoom(item, occupants, t){
     var cm=item.cm, x=item.x, y=item.y, w=item.w, h=item.h;
-    var kind=cm.kind, active = kind==='meeting' && occupants.length>0;
+    var kind=cm.kind, active = (kind==='meeting'||kind==='cantina') && occupants.length>0;
     var right = kind==='meeting' ? (occupants.length+' em reunião')
-      : (kind==='cantina' ? 'café & comida' : '2 PCs gamer');
+      : (kind==='cantina' ? (occupants.length?occupants.length+' no almoço':'café & comida') : '2 PCs gamer');
     var b=drawFrame(x,y,w,h,cm.color,cm.emoji,cm.name,right,active);
     var cxm=x+w/2, midY=b.bodyY+b.bodyH/2;
     if(kind==='meeting'){
@@ -1668,14 +1719,20 @@ const HTML = /* html */ `<!doctype html>
       if(!occupants.length){ ctx.fillStyle='rgba(139,150,168,.7)'; ctx.textAlign='center';
         ctx.textBaseline='middle'; ctx.font='12px ui-sans-serif'; ctx.fillText('sala livre', cxm, midY+52); }
     } else if(kind==='cantina'){
-      // duas mesinhas com café + banco + planta
-      if(PA.smallTable&&PA.smallTable.complete){ ctx.drawImage(PA.smallTable,0,0,32,32, cxm-120, midY-20, 32*2, 32*2);
-        ctx.drawImage(PA.smallTable,0,0,32,32, cxm+56, midY-20, 32*2, 32*2); }
-      if(PA.coffee&&PA.coffee.complete){ ctx.drawImage(PA.coffee,0,0,16,16, cxm-104, midY-8, 16*1.6,16*1.6);
-        ctx.drawImage(PA.coffee,0,0,16,16, cxm+72, midY-8, 16*1.6,16*1.6); }
-      if(PA.chairW&&PA.chairW.complete){ ctx.drawImage(PA.chairW,0,0,16,32, cxm-104, midY-64, 16*1.8,32*1.8); }
-      if(PA.sofa&&PA.sofa.complete){ ctx.drawImage(PA.sofa,0,0,32,16, cxm+34, midY+34, 32*2.4,16*2.4); }
+      // duas mesinhas com café + planta
+      var t1=cxm-120, t2=cxm+56;
+      if(PA.smallTable&&PA.smallTable.complete){ ctx.drawImage(PA.smallTable,0,0,32,32, t1, midY-20, 32*2, 32*2);
+        ctx.drawImage(PA.smallTable,0,0,32,32, t2, midY-20, 32*2, 32*2); }
+      if(PA.coffee&&PA.coffee.complete){ ctx.drawImage(PA.coffee,0,0,16,16, t1+16, midY-8, 16*1.6,16*1.6);
+        ctx.drawImage(PA.coffee,0,0,16,16, t2+16, midY-8, 16*1.6,16*1.6); }
       if(PA.plant&&PA.plant.complete){ ctx.drawImage(PA.plant,0,0,16,32, x+w-16*2-10, y+h-32*2-6, 16*2,32*2); }
+      // quem está no almoço, sentado às mesas
+      var cs=1.6, caw=16*cs, cah=32*cs;
+      var seats=[[t1+32, midY-10],[t1+32, midY+52],[t2+32, midY-10],[t2+32, midY+52]];
+      occupants.slice(0,4).forEach(function(type,i){ var s=seats[i], img=charFor(type);
+        if(img&&img.complete) ctx.drawImage(img,0,0,16,32, s[0]-caw/2, s[1]-cah, caw, cah); });
+      if(!occupants.length && PA.sofa&&PA.sofa.complete)
+        ctx.drawImage(PA.sofa,0,0,32,16, cxm+34, midY+34, 32*2.4,16*2.4);
     } else { // lounge / descanso: sofá + 2 PCs gamer
       if(PA.sofa&&PA.sofa.complete){ ctx.drawImage(PA.sofa,0,0,32,16, cxm-32*1.4, b.bodyY+b.bodyH-16*2.6-6, 32*2.8,16*2.8); }
       // 2 estações gamer: mesinha + PC ligado (animado)
@@ -1690,8 +1747,10 @@ const HTML = /* html */ `<!doctype html>
     }
   }
 
+  var HITS=[]; // áreas clicáveis das estações (para o menu de status)
   function drawOffice(cssW, cssH, t){
     ctx.imageSmoothingEnabled=false;
+    HITS=[];
     drawBuildingFloor(cssW, cssH);
     var L=computeLayout(cssW);
     drawLobby(L.lobby, t);
@@ -1700,11 +1759,12 @@ const HTML = /* html */ `<!doctype html>
     ctx.fillStyle=cssVar('--muted'); ctx.textAlign='left'; ctx.textBaseline='top';
     ctx.font='800 11px ui-sans-serif,system-ui';
     ctx.fillText('ÁREAS COMUNS', GAP+2, L.labelY);
-    // distribui quem está pensando entre as 2 salas de reunião
-    var thinkers=thinkingTypes(), meetIdx=0, assign={};
+    // realoca: pensando/reunião -> salas de reunião; almoço -> cantina
+    var meeters=meetingTypes(), meetIdx=0, assign={};
     var meetIds=L.commons.filter(function(c){return c.cm.kind==='meeting';}).map(function(c){return c.cm.id;});
-    thinkers.forEach(function(type){ var id=meetIds[meetIdx%meetIds.length]; meetIdx++;
+    meeters.forEach(function(type){ var id=meetIds[meetIdx%meetIds.length]; meetIdx++;
       (assign[id]=assign[id]||[]).push(type); });
+    assign['cantina']=cantinaTypes();
     L.commons.forEach(function(item){ drawCommonRoom(item, assign[item.cm.id]||[], t); });
   }
 
@@ -1725,6 +1785,49 @@ const HTML = /* html */ `<!doctype html>
     requestAnimationFrame(drawRoom);
   }
   requestAnimationFrame(drawRoom);
+
+  // ---- menu de status manual (clique num agente) ------------------------
+  var STATUS_OPTS=[
+    {v:'auto', k:'🔄', label:'Automático (do chat)'},
+    {v:'foco', k:'🎯', label:'Modo foco'},
+    {v:'reuniao', k:'💬', label:'Ir para a reunião'},
+    {v:'almoco', k:'🍽️', label:'Ir almoçar'},
+    {v:'casa', k:'🏠', label:'Ir para casa'},
+  ];
+  var statusMenu=document.createElement('div');
+  statusMenu.className='statusmenu hidden'; document.body.appendChild(statusMenu);
+  var menuType=null;
+  function openStatusMenu(type, clientX, clientY){
+    menuType=type; var meta=rosterMeta(type); var cur=(PREFS.status&&PREFS.status[type])||'auto';
+    var html='<div class="hd">'+meta.person+' · '+meta.name+'</div>';
+    STATUS_OPTS.forEach(function(o){ html+='<button data-v="'+o.v+'" class="'+(o.v===cur?'on':'')+'" style="--accent:'+meta.color+'">'+
+      '<span class="k">'+o.k+'</span>'+o.label+'</button>'; });
+    statusMenu.innerHTML=html; statusMenu.style.setProperty('--accent',meta.color);
+    statusMenu.classList.remove('hidden');
+    var mw=statusMenu.offsetWidth, mh=statusMenu.offsetHeight;
+    var x=Math.min(clientX, window.innerWidth-mw-8), y=Math.min(clientY, window.innerHeight-mh-8);
+    statusMenu.style.left=Math.max(8,x)+'px'; statusMenu.style.top=Math.max(8,y)+'px';
+  }
+  function closeStatusMenu(){ statusMenu.classList.add('hidden'); menuType=null; }
+  statusMenu.addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b||!menuType) return;
+    setStatus(menuType, b.dataset.v); closeStatusMenu();
+  });
+  document.addEventListener('click', function(e){
+    if(!statusMenu.classList.contains('hidden') && !statusMenu.contains(e.target) && e.target!==canvas)
+      closeStatusMenu();
+  });
+  canvas.addEventListener('click', function(e){
+    var rect=canvas.getBoundingClientRect();
+    var px=(e.clientX-rect.left)*(canvas.width/rect.width)/(window.devicePixelRatio||1);
+    var py=(e.clientY-rect.top)*(canvas.height/rect.height)/(window.devicePixelRatio||1);
+    var hit=null;
+    for(var i=0;i<HITS.length;i++){ var hh=HITS[i];
+      if(px>=hh.x&&px<=hh.x+hh.w&&py>=hh.y&&py<=hh.y+hh.h){ hit=hh; break; } }
+    if(hit){ e.stopPropagation(); openStatusMenu(hit.type, e.clientX, e.clientY); }
+    else closeStatusMenu();
+  });
+
   // Exposto para verificação fora do rAF (aba sem foco estrangula o loop).
   window.__renderOffice = function(forceW){
     var wrap=canvas.parentElement, cssW=forceW||Math.max((wrap?wrap.clientWidth:900)-20, 360);
@@ -1795,25 +1898,34 @@ const HTML = /* html */ `<!doctype html>
   }
 
   // Lista lateral: o time inteiro, agrupado pelas mesmas áreas do mapa.
+  var STATUS_LBL={ foco:'🎯 foco', reuniao:'💬 reunião', almoco:'🍽️ almoço', casa:'🏠 em casa',
+    thinking:'💭 em reunião', done:'✓ concluído', off:'inativo', idle:'aguardando' };
   function renderRoster(){
     var html='';
     ZONES.forEach(function(z){
-      var act=0; z.roles.forEach(function(r){ var s=stateForRole(r).status;
-        if(s==='working'||s==='thinking') act++; });
+      var act=0; z.roles.forEach(function(r){ var s=effState(r).status;
+        if(s==='working'||s==='thinking'||s==='foco') act++; });
       html += '<div class="zhead" style="--zc:'+z.color+'"><span>'+z.emoji+' '+z.name+'</span>'+
         '<span class="zcount">'+act+'/'+z.roles.length+'</span></div>';
       z.roles.forEach(function(type){
-        var st=stateForRole(type), meta=rosterMeta(type);
+        var st=effState(type), meta=rosterMeta(type);
         var off = st.status==='off';
-        var label = st.doing ? st.doing : (st.status==='done' ? 'concluído' : (off?'inativo':'aguardando'));
-        html += '<div class="card '+(off?'idle':'')+'" style="--accent:'+meta.color+'">'+
-          '<div class="r"><span class="st '+(off?'idle':st.status)+'"></span>'+
-          '<div style="min-width:0"><div class="nm">'+meta.name+'</div>'+
-          '<div class="dc" title="'+label+'">'+label+'</div></div></div></div>';
+        var manual = st.manual;
+        var label = st.doing ? st.doing : (STATUS_LBL[st.status] || 'aguardando');
+        var stcls = st.status==='working'?'working':(st.status==='thinking'||st.status==='foco'||st.status==='reuniao'?'thinking':(st.status==='done'?'done':'idle'));
+        html += '<div class="card '+(off?'idle':'')+'" data-role="'+type+'" title="clique para mudar o status" style="--accent:'+meta.color+'">'+
+          '<div class="r"><span class="st '+stcls+'"></span>'+
+          '<div style="min-width:0"><div class="nm">'+meta.person+' · <span style="color:'+meta.color+'">'+meta.name+'</span></div>'+
+          '<div class="dc" title="'+label+'">'+(manual?'✋ ':'')+label+'</div></div></div></div>';
       });
     });
     grid.innerHTML=html;
   }
+  grid.addEventListener('click', function(e){
+    var c=e.target.closest('[data-role]'); if(!c) return;
+    var r=c.getBoundingClientRect();
+    e.stopPropagation(); openStatusMenu(c.dataset.role, r.right-6, r.top);
+  });
 
   // ---- seletor de projeto ----------------------------------------------
   var proj = null; // pasta escolhida (null = auto-detectado no servidor)
