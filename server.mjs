@@ -198,6 +198,16 @@ const CHANGELOG = [
     ],
   },
   {
+    version: '0.5.0',
+    date: '2026-07-20',
+    title: 'O mapa do time — cada agente na sua salinha',
+    items: [
+      { emoji: '🗺️', text: 'A tela principal virou um mapa do escritório: TODOS os agentes do time aparecem, cada um na sua própria salinha.' },
+      { emoji: '💡', text: 'A salinha acende (borda colorida + monitor ligado + balão) quando aquele agente está trabalhando; fica apagada quando está inativo.' },
+      { emoji: '🏷️', text: 'Cada sala tem letreiro com o nome do papel (Orquestrador, PM, PO, Designer, QA, Conformidade ISO…).' },
+    ],
+  },
+  {
     version: '0.4.0',
     date: '2026-07-20',
     title: 'Escritório de verdade — cada agente na sua mesa',
@@ -949,9 +959,37 @@ const HTML = /* html */ `<!doctype html>
     chars: [paImg('char_0'),paImg('char_1'),paImg('char_2'),paImg('char_3'),paImg('char_4'),paImg('char_5')],
   };
   // papel -> índice do personagem (0..5). O usuário pode trocar em Personalizar.
-  var CHAR_BY_ROLE = { orquestrador:0, pm:2, 'pm-lead':2, 'pm-growth':2, 'pm-core':3,
+  var CHAR_BY_ROLE = { orquestrador:0, pm:2, 'pm-lead':2, 'pm-growth':4, 'pm-core':3,
     pesquisador:4, po:1, pa:5, designer:1, 'lead-design':3, qa:0, 'pos-release':4,
-    'cs-implantacao':5, Explore:2, Plan:3, 'general-purpose':0, claude:4 };
+    'cs-implantacao':5, 'conformidade-iso':2, Explore:2, Plan:3, 'general-purpose':0, claude:4 };
+
+  // Elenco fixo do mapa: cada papel tem a sua salinha, sempre presente.
+  // A cor é usada no letreiro/realce quando o agente está ativo.
+  var ROSTER = [
+    { type:'orquestrador', name:'Orquestrador', color:'#6366f1' },
+    { type:'pm-lead', name:'PM Lead', color:'#2563eb' },
+    { type:'pm-growth', name:'PM Growth', color:'#0891b2' },
+    { type:'pm-core', name:'PM Core', color:'#0ea5e9' },
+    { type:'pesquisador', name:'Pesquisador', color:'#14b8a6' },
+    { type:'po', name:'PO', color:'#7c3aed' },
+    { type:'designer', name:'Designer', color:'#db2777' },
+    { type:'lead-design', name:'Lead Design', color:'#c026d3' },
+    { type:'pa', name:'PA', color:'#059669' },
+    { type:'qa', name:'QA', color:'#16a34a' },
+    { type:'pos-release', name:'Pós-Release', color:'#ea580c' },
+    { type:'cs-implantacao', name:'CS / Implantação', color:'#d97706' },
+    { type:'conformidade-iso', name:'Conformidade ISO', color:'#64748b' },
+  ];
+  // Estado (do log da sessão) para um papel: agrega os agentes ativos daquele tipo.
+  function stateForRole(type){
+    var best=null;
+    for(var i=0;i<S.agents.length;i++){ var a=S.agents[i]; if(a.type!==type) continue;
+      var rank={working:3,thinking:3,done:2,idle:1};
+      if(!best || (rank[a.status]||0)>(rank[best.status]||0)) best=a;
+    }
+    if(best) return { status:best.status, doing:best.doing, present:true };
+    return { status:'off', doing:'', present:false }; // sem agente desse tipo na sessão
+  }
   function charFor(role){
     var o = PREFS.avatars && PREFS.avatars[role];
     if(typeof o==='number' && o>=0 && o<6) return PA.chars[o];
@@ -1164,88 +1202,109 @@ const HTML = /* html */ `<!doctype html>
       ctx.font='11px ui-sans-serif'; ctx.fillText('✓ concluído', cx, feet+34); }
   }
 
-  // ---- Escritório em grade (estilo Pixel Agents) ------------------------
-  var PSC = 3, PT = 16*PSC;          // escala e tile do escritório
-  var CELL_W = 4*PT, CELL_H = 4*PT;  // baia = 4x4 tiles
-  var COL_GAP = 18, ROW_GAP = 34;    // respiro entre baias (evita balão colidir)
+  // ---- Mapa principal: um prédio com a salinha de cada agente -----------
+  var PSC = 3, PT = 16*PSC;              // escala e tile
+  var CELL_W = 4*PT, CELL_H = 5*PT;      // salinha (com letreiro + porta)
+  var GAP = 16;                          // corredor entre salinhas
+  var HD = 24;                           // altura do letreiro
 
-  function officeCols(w){ return Math.max(1, Math.floor((w+COL_GAP) / (CELL_W+COL_GAP))); }
-  function officeSize(n, w){
-    var cols = Math.min(officeCols(w), Math.max(1,n));
-    var rows = Math.ceil(n / cols);
-    return { cols:cols, rows:rows, h: PT + 8 + rows*CELL_H + (rows-1)*ROW_GAP + 26 };
+  function officeCols(w){ return Math.max(1, Math.floor((w+GAP)/(CELL_W+GAP))); }
+  function officeSize(w){
+    var n=ROSTER.length, cols=Math.min(officeCols(w), n), rows=Math.ceil(n/cols);
+    return { cols:cols, rows:rows, h: PT+10 + rows*CELL_H + (rows-1)*GAP + 20 };
   }
 
-  // Preenche o piso: tile temático (rpg/indoor) se a sala definir, senão o piso PA.
-  function drawOfficeFloor(w,h){
-    var R = activeRoom || {}, wallH = PT;
-    var sh = R.tileSheet || 'rpg';
-    // parede (topo)
-    if(R.wallTile && sheetReadyOf(sh)){
-      var st=TILE*TS; for(var x=0;x<w;x+=st) ctx.drawImage(sheetOf(sh),R.wallTile[0]*STRIDE,R.wallTile[1]*STRIDE,TILE,TILE,x,wallH-st,st,st);
-    } else if(PA.wall.complete){
-      for(var x=0;x<w;x+=PT) ctx.drawImage(PA.wall,16,0,16,16,x,0,PT,PT);
-    } else { ctx.fillStyle=R.wall||'#333'; ctx.fillRect(0,0,w,wallH); }
-    // piso
+  // Piso do prédio (corredores) — piso PA cinza ou tema da sala escolhida.
+  function drawBuildingFloor(w,h){
+    var R=activeRoom||{}, sh=R.tileSheet||'rpg';
     if(R.floorTile && sheetReadyOf(sh)){
-      var st2=TILE*TS; for(var y=wallH;y<h;y+=st2) for(var x2=0;x2<w;x2+=st2) ctx.drawImage(sheetOf(sh),R.floorTile[0]*STRIDE,R.floorTile[1]*STRIDE,TILE,TILE,x2,y,st2,st2);
+      var st=TILE*TS; for(var y=0;y<h;y+=st) for(var x=0;x<w;x+=st)
+        ctx.drawImage(sheetOf(sh),R.floorTile[0]*STRIDE,R.floorTile[1]*STRIDE,TILE,TILE,x,y,st,st);
     } else if(PA.floor.complete){
-      for(var y2=wallH;y2<h;y2+=PT) for(var x3=0;x3<w;x3+=PT) ctx.drawImage(PA.floor,0,0,16,16,x3,y2,PT,PT);
-    } else { ctx.fillStyle=R.floor||'#888'; ctx.fillRect(0,wallH,w,h-wallH); }
+      for(var y2=0;y2<h;y2+=PT) for(var x2=0;x2<w;x2+=PT) ctx.drawImage(PA.floor,0,0,16,16,x2,y2,PT,PT);
+    } else { ctx.fillStyle='#6b7280'; ctx.fillRect(0,0,w,h); }
+    ctx.fillStyle='rgba(0,0,0,.12)'; ctx.fillRect(0,0,w,h);
   }
 
-  // Desenha uma baia: cadeira + agente + mesa + PC + nome/estado/balão.
-  function drawWorkstation(a, gx, gy, t){
-    var wx = gx + CELL_W/2, deskBottom = gy + CELL_H - PT*0.4;
-    var deskW=48*PSC, deskH=32*PSC, deskX=wx-deskW/2, deskY=deskBottom-deskH;
-    var active = a.status==='working' || a.status==='thinking';
-    var bob = active ? Math.round(Math.sin(t/220 + gx)*1.5) : 0;
-    var aw=16*PSC, ah=32*PSC, ax=wx-aw/2, aBottom=deskY+10*PSC, ay=aBottom-ah - bob;
-    // cadeira
-    if(PA.chair.complete) ctx.drawImage(PA.chair, wx-8*PSC, ay+4*PSC, 16*PSC, 16*PSC);
-    // agente (personagem Metro City, frame frontal parado 16x32)
-    var img = charFor(a.type);
-    ctx.save(); if(!active && (a.status==='idle')) ctx.globalAlpha=.6;
-    if(img && img.complete) ctx.drawImage(img, 0,0,16,32, ax, ay, aw, ah);
-    else { ctx.fillStyle=a.color||'#888'; ctx.fillRect(ax,ay,aw,ah); }
+  // Preenche o piso interno de uma salinha com o tile PA (recortado ao retângulo).
+  function fillRoomFloor(x,y,w,h){
+    ctx.save(); roundRect(x,y,w,h,7); ctx.clip();
+    if(PA.floor.complete){ for(var yy=y;yy<y+h;yy+=PT) for(var xx=x;xx<x+w;xx+=PT)
+      ctx.drawImage(PA.floor,0,0,16,16,xx,yy,PT,PT); }
+    else { ctx.fillStyle='#8a929e'; ctx.fillRect(x,y,w,h); }
     ctx.restore();
-    // mesa (oclui parte de baixo)
+  }
+
+  // Uma salinha por papel: letreiro + paredes + porta + agente na mesa.
+  function drawRoomCell(role, gx, gy, t){
+    var st = stateForRole(role.type);
+    var active = st.status==='working' || st.status==='thinking';
+    var off = st.status==='off';
+    var rx=gx, ry=gy, rw=CELL_W, rh=CELL_H;
+    var bodyY=ry+HD, bodyH=rh-HD;
+    // corpo (piso interno)
+    fillRoomFloor(rx, bodyY, rw, bodyH);
+    // parede: borda + porta (gap embaixo, ao centro)
+    ctx.save();
+    ctx.lineWidth = active?3:2;
+    ctx.strokeStyle = active ? role.color : (off? 'rgba(120,130,145,.5)' : 'rgba(120,130,145,.8)');
+    if(active){ ctx.shadowColor=role.color; ctx.shadowBlur=12; }
+    var doorW=1.6*PT, dl=rx+rw/2-doorW/2, dr=rx+rw/2+doorW/2;
+    ctx.beginPath();
+    ctx.moveTo(dl, ry+rh); ctx.lineTo(rx+7, ry+rh); ctx.arcTo(rx,ry+rh,rx,ry+rh-7,7);
+    ctx.lineTo(rx, bodyY); ctx.lineTo(rx+rw, bodyY); ctx.lineTo(rx+rw, ry+rh-7);
+    ctx.arcTo(rx+rw,ry+rh,rx+rw-7,ry+rh,7); ctx.lineTo(dr, ry+rh);
+    ctx.stroke(); ctx.restore();
+    // capacho na porta
+    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(dl, ry+rh-4, doorW, 6);
+    // letreiro
+    ctx.save(); roundRect(rx, ry, rw, HD, 7); ctx.clip();
+    ctx.fillStyle = active ? role.color : (off?'#3a4150':'#2b3140');
+    ctx.fillRect(rx,ry,rw,HD);
+    ctx.restore();
+    ctx.fillStyle = active ? '#0b0d12' : (off?'#8b96a8':'#dfe5ee');
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='700 12px ui-sans-serif,system-ui';
+    ctx.fillText(role.name, rx+rw/2, ry+HD/2+1);
+
+    // ---- estação de trabalho dentro da salinha ----
+    var wx=rx+rw/2, deskBottom=ry+rh-PT*0.55;
+    var deskW=48*PSC*0.9, deskH=32*PSC*0.9, deskX=wx-deskW/2, deskY=deskBottom-deskH;
+    var bob = active ? Math.round(Math.sin(t/220+gx)*1.5) : 0;
+    var aw=16*PSC*0.9, ah=32*PSC*0.9, ax=wx-aw/2, ay=(deskY+9*PSC)-ah-bob;
+    if(PA.chair.complete) ctx.drawImage(PA.chair, wx-8*PSC*0.9, ay+4*PSC, 16*PSC*0.9, 16*PSC*0.9);
+    var img=charFor(role.type);
+    ctx.save(); ctx.globalAlpha = off?0.5 : (st.status==='idle'?0.75:1);
+    if(img && img.complete) ctx.drawImage(img,0,0,16,32, ax,ay,aw,ah);
+    else { ctx.fillStyle=role.color; ctx.fillRect(ax,ay,aw,ah); }
+    ctx.restore();
     if(PA.desk.complete) ctx.drawImage(PA.desk, deskX, deskY, deskW, deskH);
-    // PC — ligado e animado quando ativo; desligado quando ocioso
-    var ps=PSC*0.8, pw=16*ps, ph=32*ps, px=wx+8*PSC, py=(deskY+18*PSC)-ph;
+    var ps=PSC*0.72, pw=16*ps, ph=32*ps, px=wx+7*PSC, py=(deskY+16*PSC)-ph;
     var pcImg = active ? PA.pcOn[Math.floor(t/220)%3] : PA.pcOff;
     if(pcImg && pcImg.complete) ctx.drawImage(pcImg, px, py, pw, ph);
-    // ponto de status na cadeira/ombro
-    ctx.fillStyle=statusColor(a.status);
-    ctx.beginPath(); ctx.arc(ax+aw-3, ay+7, 4, 0, 7); ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=1; ctx.stroke();
-    // nome (abaixo da mesa)
-    ctx.fillStyle=cssVar('--text'); ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.font='650 12px ui-sans-serif,system-ui'; ctx.fillText(a.name, wx, deskBottom+3);
-    // balão do que está fazendo
-    if(active && a.doing) bubble(wx, ay+4, a.doing);
-    else if(a.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.font='11px ui-sans-serif';
-      ctx.textBaseline='top'; ctx.fillText('✓ concluído', wx, deskBottom+18); }
+    // balão / estado
+    if(active && st.doing) bubble(wx, ay+2, st.doing);
+    else if(st.status==='done'){ ctx.fillStyle=cssVar('--muted'); ctx.font='11px ui-sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('✓ concluído', wx, deskBottom+4); }
+    else if(off){ ctx.fillStyle='rgba(139,150,168,.7)'; ctx.font='10px ui-sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('· inativo ·', wx, deskBottom+4); }
   }
 
   function drawOffice(cssW, cssH, t){
     ctx.imageSmoothingEnabled=false;
-    drawOfficeFloor(cssW, cssH);
-    var n=S.agents.length, cols=Math.min(officeCols(cssW), Math.max(1,n));
-    var gridW = cols*CELL_W + (cols-1)*COL_GAP, ox=Math.round((cssW-gridW)/2), startY=PT+8;
+    drawBuildingFloor(cssW, cssH);
+    var n=ROSTER.length, cols=Math.min(officeCols(cssW), n);
+    var gridW=cols*CELL_W+(cols-1)*GAP, ox=Math.round((cssW-gridW)/2), startY=PT+10;
     for(var i=0;i<n;i++){
       var r=Math.floor(i/cols), c=i%cols;
-      drawWorkstation(S.agents[i], ox+c*(CELL_W+COL_GAP), startY+r*(CELL_H+ROW_GAP), t);
+      drawRoomCell(ROSTER[i], ox+c*(CELL_W+GAP), startY+r*(CELL_H+GAP), t);
     }
-    if(n===0){ ctx.fillStyle=cssVar('--muted'); ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.font='13px ui-sans-serif'; ctx.fillText('nenhum agente ativo nesta sessão', cssW/2, cssH/2); }
   }
 
   function drawRoom(t){
     if(view==='room'){
       var wrap = canvas.parentElement;
       var cssW = Math.max(wrap.clientWidth-20, CELL_W+40);
-      var sz = officeSize(S.agents.length, cssW);
+      var sz = officeSize(cssW);
       var cssH = Math.max(320, sz.h);
       var dpr = window.devicePixelRatio || 1;
       if(canvas.width!==Math.round(cssW*dpr) || canvas.height!==Math.round(cssH*dpr)){
@@ -1261,7 +1320,7 @@ const HTML = /* html */ `<!doctype html>
   // Exposto para verificação fora do rAF (aba sem foco estrangula o loop).
   window.__renderOffice = function(){
     var wrap=canvas.parentElement, cssW=Math.max((wrap?wrap.clientWidth:900)-20, CELL_W+40);
-    var sz=officeSize(S.agents.length,cssW), cssH=Math.max(320,sz.h);
+    var sz=officeSize(cssW), cssH=Math.max(320,sz.h);
     canvas.width=cssW; canvas.height=cssH; canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
     ctx.setTransform(1,0,0,1,0,0); drawOffice(cssW,cssH, Date.now());
     return cssW+'x'+cssH;
