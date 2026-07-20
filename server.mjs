@@ -102,14 +102,16 @@ function readPrefs() {
     return {
       room: typeof p.room === 'string' ? p.room : 'escritorio',
       avatars: p.avatars && typeof p.avatars === 'object' ? p.avatars : {},
+      seenChangelog: typeof p.seenChangelog === 'string' ? p.seenChangelog : '',
     };
-  } catch { return { room: 'escritorio', avatars: {} }; }
+  } catch { return { room: 'escritorio', avatars: {}, seenChangelog: '' }; }
 }
 function writePrefs(next) {
   const cur = readPrefs();
   const merged = {
     room: typeof next.room === 'string' ? next.room : cur.room,
     avatars: { ...cur.avatars, ...(next.avatars || {}) },
+    seenChangelog: typeof next.seenChangelog === 'string' ? next.seenChangelog : cur.seenChangelog,
   };
   try {
     fs.mkdirSync(path.dirname(PREFS_FILE), { recursive: true });
@@ -134,6 +136,22 @@ const ROOMS = [
     floor: '#241d18', floor2: '#1c1611', wall: '#161009', rug: '#3a2a1c' },
   { id: 'neon', name: 'Neon', emoji: '🌆',
     floor: '#1a1226', floor2: '#140d1e', wall: '#0d0816', rug: '#2c1b45' },
+];
+
+// ---- Novidades por versão (alimenta o modal "O que há de novo") ------------
+// Fonte única do changelog exibido ao usuário — a mais recente aparece primeiro.
+const CHANGELOG = [
+  {
+    version: '0.2.0',
+    date: '2026-07-20',
+    title: 'Deixe a sala com a sua cara',
+    items: [
+      { emoji: '🎨', text: 'Escolha o cenário da sala — 6 ambientes (Escritório, Masmorra, Floresta, Nave, Cafeteria e Neon).' },
+      { emoji: '🧑‍🚀', text: 'Escolha o avatar de cada agente: abra ⚙︎ Personalizar e clique no personagem que quiser.' },
+      { emoji: '💾', text: 'Suas escolhas ficam salvas só no seu PC.' },
+      { emoji: '🔄', text: 'O app passa a se atualizar sozinho: baixa a versão nova em segundo plano e instala ao reiniciar.' },
+    ],
+  },
 ];
 
 // ---- Elenco: papel -> avatar + cor + nome amigável ------------------------
@@ -486,6 +504,10 @@ const server = http.createServer((req, res) => {
     json({ rooms: ROOMS });
     return;
   }
+  if (url.pathname === '/changelog') {
+    json({ version: APP_VERSION, entries: CHANGELOG });
+    return;
+  }
   if (url.pathname === '/prefs') {
     if (req.method === 'POST') {
       let body = '';
@@ -678,6 +700,22 @@ const HTML = /* html */ `<!doctype html>
     align-items:center;gap:10px;flex-wrap:wrap}
   .credit a{color:var(--think);text-decoration:none}
   .linkbtn{background:transparent;border:0;color:var(--think);cursor:pointer;font-size:11.5px;padding:0}
+  /* modal "o que há de novo" */
+  .sheet.nw{width:min(520px,94vw)}
+  .nwtag{font-size:12px;font-weight:700;color:var(--work);
+    background:color-mix(in srgb,var(--work) 16%,transparent);
+    border:1px solid color-mix(in srgb,var(--work) 40%,var(--line));
+    padding:3px 9px;border-radius:999px}
+  .nwver{color:var(--muted);font-size:12px;margin:0 0 14px}
+  .nwlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+  .nwlist li{display:flex;gap:11px;align-items:flex-start;font-size:13.5px;line-height:1.4}
+  .nwlist .ic{font-size:19px;line-height:1;flex:none;width:24px;text-align:center}
+  .sheetfoot{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px;
+    border-top:1px solid var(--line)}
+  .btnprimary{background:var(--think);color:#0b0d12;border:0;border-radius:8px;
+    padding:8px 16px;cursor:pointer;font-weight:640;font-size:13px}
+  .btnghost{background:transparent;color:var(--muted);border:1px solid var(--line);
+    border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px}
 </style>
 </head>
 <body>
@@ -741,6 +779,24 @@ const HTML = /* html */ `<!doctype html>
         Arte CC0 — <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Kenney · Roguelike Characters</a>.
         <button id="resetAvatar" class="linkbtn">Restaurar padrão deste agente</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="whatsnew" class="modal hidden">
+  <div class="sheet nw">
+    <div class="sheethead">
+      <span class="nwtag">✨ Novidades</span>
+      <strong id="nwTitle" style="margin-left:8px"></strong>
+      <button id="nwCloseX" class="x" title="Ver depois">✕</button>
+    </div>
+    <div class="sheetbody">
+      <div id="nwVer" class="nwver"></div>
+      <ul id="nwList" class="nwlist"></ul>
+    </div>
+    <div class="sheetfoot">
+      <button id="nwLater" class="btnghost">Ver depois</button>
+      <button id="nwOk" class="btnprimary">Entendi</button>
     </div>
   </div>
 </div>
@@ -1145,7 +1201,37 @@ const HTML = /* html */ `<!doctype html>
     document.getElementById('verLabel').textContent='Sala dos Agentes v'+vv;
   }).catch(function(){});
 
-  loadPrefs().then(function(){ loadProjects(); });
+  // ---- modal "o que há de novo" -----------------------------------------
+  var nw = document.getElementById('whatsnew');
+  var nwCurrent = ''; // versão exibida no modal
+  function closeWhatsNew(){ nw.classList.add('hidden'); }
+  function ackWhatsNew(){
+    PREFS.seenChangelog = nwCurrent; savePrefs(); closeWhatsNew();
+  }
+  document.getElementById('nwOk').onclick = ackWhatsNew;
+  document.getElementById('nwLater').onclick = closeWhatsNew;
+  document.getElementById('nwCloseX').onclick = closeWhatsNew;
+  nw.addEventListener('click', function(e){ if(e.target===nw) closeWhatsNew(); });
+
+  function maybeWhatsNew(){
+    fetch('/changelog').then(function(r){return r.json();}).then(function(d){
+      var entries = d.entries || []; if(!entries.length) return;
+      var latest = entries[0];
+      // 'dev' (rodando por node, sem app) não incomoda; só mostra no app instalado.
+      if(d.version==='dev') return;
+      if(PREFS.seenChangelog === latest.version) return; // já confirmou esta versão
+      nwCurrent = latest.version;
+      document.getElementById('nwTitle').textContent = latest.title || 'O que há de novo';
+      document.getElementById('nwVer').textContent =
+        'Versão '+latest.version + (latest.date ? ' · '+latest.date : '');
+      document.getElementById('nwList').innerHTML = (latest.items||[]).map(function(it){
+        return '<li><span class="ic">'+(it.emoji||'•')+'</span><span>'+it.text+'</span></li>';
+      }).join('');
+      nw.classList.remove('hidden');
+    }).catch(function(){});
+  }
+
+  loadPrefs().then(function(){ loadProjects(); maybeWhatsNew(); });
   setInterval(tick, 2000);
 </script>
 </body>
