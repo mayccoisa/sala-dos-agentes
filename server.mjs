@@ -25,6 +25,17 @@ const PORT = Number(process.env.PORT) || 4599;
 const FIXED_SESSION = process.argv[2] || null;
 const STALE_MS = 90_000; // sem atividade por 90s => ocioso
 
+// Versão do app: no Electron vem via AGENT_ROOM_VERSION (injetada pelo main.mjs);
+// rodando solto por node, lê o package.json do desktop como referência.
+const APP_VERSION = process.env.AGENT_ROOM_VERSION || readDesktopVersion() || 'dev';
+function readDesktopVersion() {
+  try {
+    const p = path.join(HERE_EARLY(), 'desktop', 'package.json');
+    return JSON.parse(fs.readFileSync(p, 'utf8')).version;
+  } catch { return null; }
+}
+function HERE_EARLY() { return path.dirname(fileURLToPath(import.meta.url)); }
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SPRITE_SHEET = path.join(HERE, 'assets', 'characters.png');
 
@@ -81,6 +92,49 @@ function resolveProjectDir() {
 }
 
 const PROJECT_DIR = resolveProjectDir();
+
+// ---- Preferências do usuário (sala + avatares) ----------------------------
+// Ficam SÓ no PC (produto local e instalado): ~/.claude/agent-room-prefs.json.
+const PREFS_FILE = path.join(os.homedir(), '.claude', 'agent-room-prefs.json');
+function readPrefs() {
+  try {
+    const p = JSON.parse(fs.readFileSync(PREFS_FILE, 'utf8'));
+    return {
+      room: typeof p.room === 'string' ? p.room : 'escritorio',
+      avatars: p.avatars && typeof p.avatars === 'object' ? p.avatars : {},
+    };
+  } catch { return { room: 'escritorio', avatars: {} }; }
+}
+function writePrefs(next) {
+  const cur = readPrefs();
+  const merged = {
+    room: typeof next.room === 'string' ? next.room : cur.room,
+    avatars: { ...cur.avatars, ...(next.avatars || {}) },
+  };
+  try {
+    fs.mkdirSync(path.dirname(PREFS_FILE), { recursive: true });
+    fs.writeFileSync(PREFS_FILE, JSON.stringify(merged, null, 2));
+  } catch (e) { console.error('Falha ao salvar preferências:', e.message); }
+  return merged;
+}
+
+// ---- Catálogo de salas (cenários) -----------------------------------------
+// Cada sala é uma paleta de piso/parede desenhada no canvas — arte 100% própria
+// (procedural), sem depender de imagem externa. O usuário escolhe nas config.
+const ROOMS = [
+  { id: 'escritorio', name: 'Escritório', emoji: '🏢',
+    floor: '#151b26', floor2: '#111722', wall: '#0e1420', rug: '#1c2740' },
+  { id: 'masmorra', name: 'Masmorra', emoji: '🏰',
+    floor: '#22201c', floor2: '#1a1815', wall: '#14110d', rug: '#3a2f1e' },
+  { id: 'floresta', name: 'Floresta', emoji: '🌲',
+    floor: '#16241a', floor2: '#111d15', wall: '#0d1710', rug: '#204028' },
+  { id: 'nave', name: 'Nave espacial', emoji: '🚀',
+    floor: '#141a24', floor2: '#0f151f', wall: '#0a0f18', rug: '#182a44' },
+  { id: 'cafe', name: 'Cafeteria', emoji: '☕',
+    floor: '#241d18', floor2: '#1c1611', wall: '#161009', rug: '#3a2a1c' },
+  { id: 'neon', name: 'Neon', emoji: '🌆',
+    floor: '#1a1226', floor2: '#140d1e', wall: '#0d0816', rug: '#2c1b45' },
+];
 
 // ---- Elenco: papel -> avatar + cor + nome amigável ------------------------
 // Papéis vêm de .claude/agents/. "orquestrador" é a sessão principal (main loop).
@@ -424,6 +478,28 @@ const server = http.createServer((req, res) => {
     json({ projects: listProjects(), defaultFolder: path.basename(PROJECT_DIR) });
     return;
   }
+  if (url.pathname === '/version') {
+    json({ version: APP_VERSION });
+    return;
+  }
+  if (url.pathname === '/rooms') {
+    json({ rooms: ROOMS });
+    return;
+  }
+  if (url.pathname === '/prefs') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on('end', () => {
+        let next = {};
+        try { next = JSON.parse(body || '{}'); } catch {}
+        json(writePrefs(next));
+      });
+      return;
+    }
+    json(readPrefs());
+    return;
+  }
   if (url.pathname === '/state') {
     // Projeto escolhido na UI vence; senão usa o auto-detectado (+ FIXED_SESSION).
     const projParam = url.searchParams.get('project');
@@ -560,6 +636,48 @@ const HTML = /* html */ `<!doctype html>
     color:var(--muted)}
   .secs{margin-left:auto;color:var(--muted);font-size:11px}
   .card.idle{opacity:.6}
+  /* footer / créditos */
+  .foot{margin:26px 2px 8px;color:var(--muted);font-size:11.5px;display:flex;
+    align-items:center;gap:8px;flex-wrap:wrap}
+  .foot a{color:var(--think);text-decoration:none}
+  .foot a:hover{text-decoration:underline}
+  .dotsep{opacity:.5}
+  /* barra de atualização */
+  .updatebar{display:flex;align-items:center;gap:12px;padding:9px 20px;
+    background:color-mix(in srgb,var(--work) 16%,var(--panel));
+    border-bottom:1px solid color-mix(in srgb,var(--work) 40%,var(--line));font-size:13px}
+  .updatebar button{background:var(--work);color:#0b0d12;border:0;border-radius:7px;
+    padding:6px 12px;cursor:pointer;font-weight:640;font-size:12.5px}
+  .updatebar button.x{background:transparent;color:var(--muted);margin-left:auto;padding:6px 8px}
+  /* modal de personalização */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:50}
+  .modal .sheet{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    width:min(680px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+  .sheethead{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .sheethead .x,.updatebar .x,.modal .x{cursor:pointer}
+  .sheethead .x{margin-left:auto;background:transparent;border:0;color:var(--muted);font-size:15px}
+  .sheetbody{padding:16px 18px;overflow:auto}
+  .sheetbody h3{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);
+    margin:6px 0 10px}
+  .sheetbody h3:not(:first-child){margin-top:22px}
+  .hint{color:var(--muted);font-size:12px;margin:0 0 10px}
+  .roomlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .roomcard{border:1px solid var(--line);border-radius:11px;padding:10px;cursor:pointer;
+    display:flex;flex-direction:column;gap:8px;background:var(--panel2)}
+  .roomcard.on{border-color:var(--think);box-shadow:0 0 0 2px color-mix(in srgb,var(--think) 30%,transparent)}
+  .roomcard .sw{height:36px;border-radius:7px;border:1px solid var(--line)}
+  .roomcard .rn{font-size:12.5px;font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+  .chip{border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;
+    font-size:12.5px;background:var(--panel2);color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+  .chip.on{border-color:var(--accent,#6366f1);color:var(--text);
+    background:color-mix(in srgb,var(--accent,#6366f1) 16%,var(--panel2))}
+  .pickerwrap{border:1px solid var(--line);border-radius:11px;padding:8px;overflow:auto;background:var(--panel2)}
+  #picker{display:block;image-rendering:pixelated;cursor:pointer}
+  .credit{margin-top:12px;color:var(--muted);font-size:11.5px;display:flex;
+    align-items:center;gap:10px;flex-wrap:wrap}
+  .credit a{color:var(--think);text-decoration:none}
+  .linkbtn{background:transparent;border:0;color:var(--think);cursor:pointer;font-size:11.5px;padding:0}
 </style>
 </head>
 <body>
@@ -572,8 +690,14 @@ const HTML = /* html */ `<!doctype html>
     <button data-view="room" class="active">🏠 Sala</button>
     <button data-view="diagram">🌳 Diagrama</button>
   </div>
+  <button class="theme" id="settings" title="Personalizar sala e avatares">⚙︎ Personalizar</button>
   <button class="theme" id="theme">☀︎ / ☾</button>
 </header>
+<div id="updateBar" class="updatebar hidden">
+  <span id="updateMsg">Nova versão disponível.</span>
+  <button id="updateBtn">Atualizar agora</button>
+  <button id="updateClose" class="x" title="Depois">✕</button>
+</div>
 <main>
   <div id="viewRoom">
     <h2 class="sec">Sala — a equipe trabalhando</h2>
@@ -589,7 +713,37 @@ const HTML = /* html */ `<!doctype html>
 
   <h2 class="sec">Agentes</h2>
   <div class="grid" id="grid"></div>
+
+  <footer class="foot">
+    <span id="verLabel">Sala dos Agentes</span>
+    <span class="dotsep">·</span>
+    <span>Personagens: <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Roguelike Characters</a> por <a href="https://kenney.nl" target="_blank" rel="noreferrer">Kenney</a> (CC0)</span>
+  </footer>
 </main>
+
+<div id="modal" class="modal hidden">
+  <div class="sheet">
+    <div class="sheethead">
+      <strong>Personalizar</strong>
+      <button id="modalClose" class="x">✕</button>
+    </div>
+    <div class="sheetbody">
+      <h3>Sala</h3>
+      <div id="roomList" class="roomlist"></div>
+
+      <h3>Avatar por agente</h3>
+      <p class="hint">Escolha o agente e clique num personagem na folha abaixo.</p>
+      <div id="agentChips" class="chips"></div>
+      <div class="pickerwrap">
+        <canvas id="picker"></canvas>
+      </div>
+      <div class="credit">
+        Arte CC0 — <a href="https://kenney.nl/assets/roguelike-characters" target="_blank" rel="noreferrer">Kenney · Roguelike Characters</a>.
+        <button id="resetAvatar" class="linkbtn">Restaurar padrão deste agente</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
   // ---- sprites (Kenney Roguelike Characters, CC0) -----------------------
   var TILE = 16, STRIDE = 17;
@@ -604,6 +758,21 @@ const HTML = /* html */ `<!doctype html>
   var sheet = new Image(); var sheetReady = false;
   sheet.onload = function(){ sheetReady = true; };
   sheet.src = '/characters.png';
+
+  // Preferências (sala + avatares) — carregadas de /prefs, salvas no PC.
+  var PREFS = { room:'escritorio', avatars:{} };
+  var ROOMS = []; var activeRoom = null;
+  function resolveRoom(){
+    activeRoom = null;
+    for(var i=0;i<ROOMS.length;i++) if(ROOMS[i].id===PREFS.room){ activeRoom=ROOMS[i]; break; }
+    if(!activeRoom) activeRoom = ROOMS[0] || null;
+  }
+  // Avatar de um papel: override do usuário vence; senão o mapa padrão.
+  function spriteFor(type){
+    var o = PREFS.avatars && PREFS.avatars[type];
+    if(o && o.length===2) return o;
+    return SPRITE[type] || FALLBACK;
+  }
 
   var S = { agents:[], edges:[], timeline:[], sessionId:null };
   var view = 'room';
@@ -666,11 +835,24 @@ const HTML = /* html */ `<!doctype html>
   }
 
   function drawFloor(w,h){
-    ctx.fillStyle = cssVar('--floor'); ctx.fillRect(0,0,w,h);
-    ctx.fillStyle = cssVar('--floor2');
+    var R = activeRoom || {};
+    var wallH = 46;
+    // parede (topo)
+    ctx.fillStyle = R.wall || cssVar('--floor');
+    ctx.fillRect(0,0,w,wallH);
+    // rodapé/faixa entre parede e piso
+    ctx.fillStyle = R.rug || cssVar('--floor2');
+    ctx.fillRect(0,wallH-4,w,4);
+    // piso xadrez
+    ctx.fillStyle = R.floor || cssVar('--floor'); ctx.fillRect(0,wallH,w,h-wallH);
+    ctx.fillStyle = R.floor2 || cssVar('--floor2');
     var s=26;
-    for(var y=0;y<h;y+=s) for(var x=0;x<w;x+=s)
-      if(((x/s)+(y/s))%2===0) ctx.fillRect(x,y,s,s);
+    for(var y=wallH;y<h;y+=s) for(var x=0;x<w;x+=s)
+      if((Math.floor(x/s)+Math.floor(y/s))%2===0) ctx.fillRect(x,y,s,Math.min(s,h-y));
+    // tapete central (destaque da sala)
+    ctx.save(); ctx.globalAlpha=.5; ctx.fillStyle=R.rug||cssVar('--floor2');
+    var rw=Math.min(w-80,520), rx=(w-rw)/2, ry=wallH+22;
+    roundRect(rx,ry,rw,h-ry-22,14); ctx.fill(); ctx.restore();
     ctx.strokeStyle = cssVar('--line'); ctx.lineWidth=1;
     ctx.globalAlpha=.5; ctx.strokeRect(.5,.5,w-1,h-1); ctx.globalAlpha=1;
   }
@@ -726,7 +908,7 @@ const HTML = /* html */ `<!doctype html>
       ctx.restore();
     }
     // sprite
-    var sp = SPRITE[a.type] || FALLBACK;
+    var sp = spriteFor(a.type);
     var sx = sp[0]*STRIDE, sy = sp[1]*STRIDE;
     var dx = cx - size/2, dy = feet - size - bob;
     ctx.save();
@@ -850,7 +1032,120 @@ const HTML = /* html */ `<!doctype html>
       renderRoster(s.agents);
     }).catch(function(){ sess.textContent='erro ao ler estado'; });
   }
-  loadProjects();
+  // ---- personalização: sala + avatares ---------------------------------
+  var modal = document.getElementById('modal');
+  var roomList = document.getElementById('roomList');
+  var agentChips = document.getElementById('agentChips');
+  var picker = document.getElementById('picker');
+  var pctx = picker.getContext('2d');
+  var selAgent = 'orquestrador'; // papel sendo editado no picker
+  var PSCALE = 2; // zoom da folha no picker
+
+  function savePrefs(){
+    fetch('/prefs',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify(PREFS)}).catch(function(){});
+  }
+  function loadPrefs(){
+    return Promise.all([
+      fetch('/prefs').then(function(r){return r.json();}),
+      fetch('/rooms').then(function(r){return r.json();})
+    ]).then(function(res){
+      PREFS = res[0] || PREFS; if(!PREFS.avatars) PREFS.avatars={};
+      ROOMS = (res[1] && res[1].rooms) || [];
+      resolveRoom();
+    }).catch(function(){});
+  }
+
+  function renderRooms(){
+    roomList.innerHTML = ROOMS.map(function(r){
+      var sw='linear-gradient(135deg,'+r.wall+' 0 30%,'+r.floor+' 30% 70%,'+r.rug+' 70%)';
+      return '<div class="roomcard'+(r.id===PREFS.room?' on':'')+'" data-room="'+r.id+'">'+
+        '<div class="sw" style="background:'+sw+'"></div>'+
+        '<div class="rn">'+r.emoji+' '+r.name+'</div></div>';
+    }).join('');
+  }
+  roomList.addEventListener('click', function(e){
+    var c=e.target.closest('[data-room]'); if(!c) return;
+    PREFS.room=c.getAttribute('data-room'); resolveRoom(); renderRooms(); savePrefs();
+  });
+
+  // papéis conhecidos (mesma ordem das mesas) + os que aparecerem na sessão
+  var KNOWN_ROLES = ['orquestrador','pesquisador','pm','po','pa','designer',
+    'lead-design','qa','pos-release','cs-implantacao','Explore','Plan',
+    'general-purpose','claude'];
+  function rolesForChips(){
+    var set = KNOWN_ROLES.slice();
+    (S.agents||[]).forEach(function(a){ if(set.indexOf(a.type)<0) set.push(a.type); });
+    return set;
+  }
+  function renderChips(){
+    agentChips.innerHTML = rolesForChips().map(function(t){
+      var nm = roleName(t)===t ? t : roleName(t);
+      return '<span class="chip'+(t===selAgent?' on':'')+'" data-role="'+t+'">'+
+        roleEmoji(t)+' '+nm+'</span>';
+    }).join('');
+  }
+  agentChips.addEventListener('click', function(e){
+    var c=e.target.closest('[data-role]'); if(!c) return;
+    selAgent=c.getAttribute('data-role'); renderChips(); drawPicker();
+  });
+
+  // Desenha a folha inteira no picker; destaca o tile atual do agente.
+  function drawPicker(){
+    if(!sheetReady){ setTimeout(drawPicker,120); return; }
+    var cols=Math.floor(sheet.width/STRIDE), rows=Math.floor(sheet.height/STRIDE);
+    var w=cols*TILE*PSCALE, h=rows*TILE*PSCALE;
+    picker.width=w; picker.height=h;
+    pctx.imageSmoothingEnabled=false;
+    pctx.clearRect(0,0,w,h);
+    for(var r=0;r<rows;r++) for(var c=0;c<cols;c++){
+      pctx.drawImage(sheet, c*STRIDE, r*STRIDE, TILE, TILE,
+        c*TILE*PSCALE, r*TILE*PSCALE, TILE*PSCALE, TILE*PSCALE);
+    }
+    var cur=spriteFor(selAgent);
+    pctx.strokeStyle='#f59e0b'; pctx.lineWidth=2;
+    pctx.strokeRect(cur[0]*TILE*PSCALE+1, cur[1]*TILE*PSCALE+1, TILE*PSCALE-2, TILE*PSCALE-2);
+  }
+  picker.addEventListener('click', function(e){
+    var rect=picker.getBoundingClientRect();
+    var c=Math.floor((e.clientX-rect.left)/(TILE*PSCALE));
+    var r=Math.floor((e.clientY-rect.top)/(TILE*PSCALE));
+    PREFS.avatars[selAgent]=[c,r]; savePrefs(); drawPicker();
+  });
+  document.getElementById('resetAvatar').addEventListener('click', function(){
+    delete PREFS.avatars[selAgent]; savePrefs(); drawPicker();
+  });
+
+  function openModal(){ renderRooms(); renderChips(); drawPicker();
+    modal.classList.remove('hidden'); }
+  function closeModal(){ modal.classList.add('hidden'); }
+  document.getElementById('settings').onclick=openModal;
+  document.getElementById('modalClose').onclick=closeModal;
+  modal.addEventListener('click', function(e){ if(e.target===modal) closeModal(); });
+
+  // ---- atualização (electron-updater via preload) -----------------------
+  var bar=document.getElementById('updateBar'), uMsg=document.getElementById('updateMsg'),
+      uBtn=document.getElementById('updateBtn');
+  document.getElementById('updateClose').onclick=function(){ bar.classList.add('hidden'); };
+  if(window.agentRoom && window.agentRoom.onUpdate){
+    window.agentRoom.onUpdate(function(ev){
+      if(ev.status==='available'){
+        uMsg.textContent='Nova versão '+(ev.version||'')+' disponível — baixando…';
+        uBtn.style.display='none'; bar.classList.remove('hidden');
+      } else if(ev.status==='downloaded'){
+        uMsg.textContent='Versão '+(ev.version||'')+' pronta para instalar.';
+        uBtn.style.display=''; uBtn.textContent='Reiniciar e atualizar';
+        bar.classList.remove('hidden');
+      }
+    });
+    uBtn.onclick=function(){ if(window.agentRoom.installUpdate) window.agentRoom.installUpdate(); };
+  }
+  fetch('/version').then(function(r){return r.json();}).then(function(v){
+    var vv = (window.agentRoom && window.agentRoom.version) || v.version;
+    document.getElementById('verLabel').textContent='Sala dos Agentes v'+vv;
+  }).catch(function(){});
+
+  loadPrefs().then(function(){ loadProjects(); });
   setInterval(tick, 2000);
 </script>
 </body>

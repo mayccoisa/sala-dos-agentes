@@ -3,9 +3,21 @@
 Observador local e lúdico dos agentes do Claude Code: mostra numa "salinha" o que
 cada papel/agente está fazendo, **quem chamou quem** e a linha do tempo dos handoffs.
 
+> **📥 Baixar (Windows):** pegue o instalador na
+> [**última release**](https://github.com/mayccoisa/sala-dos-agentes/releases/latest)
+> (`Sala-dos-Agentes-Setup-*.exe`). Depois de instalado, ele se atualiza sozinho.
+
 - **Zero token de API** — só *lê* os transcripts JSONL que o Claude Code já grava em
   `~/.claude/projects/`. Deixar aberto não custa nada.
 - **Por máquina** — mostra os agentes rodando *naquele* PC.
+- **Personalizável** — botão **⚙︎ Personalizar**: escolha o cenário da sala (6
+  opções) e o avatar de cada agente. As escolhas ficam **só no PC**, em
+  `~/.claude/agent-room-prefs.json`.
+- **Atualiza sozinho** — o app instalado detecta novas versões nas *releases* deste
+  repo, baixa em segundo plano e instala ao reiniciar.
+
+Personagens: pack CC0 **"Roguelike Characters"** da [Kenney](https://kenney.nl)
+(crédito visível no rodapé do app).
 
 ## Rodar sem instalar (precisa Node.js)
 
