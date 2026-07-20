@@ -198,6 +198,16 @@ const CHANGELOG = [
     ],
   },
   {
+    version: '0.7.0',
+    date: '2026-07-20',
+    title: 'Lista ao lado do mapa e linha do tempo de todos os chats',
+    items: [
+      { emoji: '📋', text: 'A lista de agentes saiu de baixo e agora fica ao LADO do mapa, agrupada pelas mesmas áreas — dá pra ver tudo de uma vez.' },
+      { emoji: '🕒', text: 'A linha do tempo ganhou o modo "Todos os chats abertos": antes ela mostrava só o chat atual, agora dá pra ver os handoffs de todas as sessões ativas.' },
+      { emoji: '🏷️', text: 'No modo "todos", cada handoff mostra de qual chat veio.' },
+    ],
+  },
+  {
     version: '0.6.0',
     date: '2026-07-20',
     title: 'Escritório por áreas — Diretoria, Pesquisa, Dados e Chamados',
@@ -576,6 +586,58 @@ function buildState(projectDir, fixedSession) {
   return { sessionId, agents, edges, timeline, ts: now };
 }
 
+// ---- Linha do tempo de TODOS os chats abertos -----------------------------
+// "Aberto" = .jsonl com atividade recente. Cada sessão vira um buildState;
+// como os .jsonl podem ter MBs, o resultado é cacheado pela assinatura de mtime
+// (arquivo principal + subagentes), então o polling de 2s fica barato.
+const OPEN_WINDOW_MS = 60 * 60 * 1000; // 1h sem atividade => chat fechado
+const MAX_OPEN_SESSIONS = 8;
+const stateCache = new Map();
+
+function sessionSig(dir, sid) {
+  let sig = '';
+  try { sig = String(fs.statSync(path.join(dir, `${sid}.jsonl`)).mtimeMs); } catch {}
+  sig += '|' + newestJsonlMtime(path.join(dir, sid, 'subagents'));
+  return sig;
+}
+function buildStateCached(dir, sid) {
+  const key = dir + '::' + sid;
+  const sig = sessionSig(dir, sid);
+  const hit = stateCache.get(key);
+  if (hit && hit.sig === sig) return hit.state;
+  const state = buildState(dir, sid);
+  stateCache.set(key, { sig, state });
+  if (stateCache.size > 24) stateCache.delete(stateCache.keys().next().value);
+  return state;
+}
+function openSessions(dir) {
+  const out = [];
+  const now = Date.now();
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.jsonl')) continue;
+      const st = fs.statSync(path.join(dir, f));
+      if (now - st.mtimeMs <= OPEN_WINDOW_MS)
+        out.push({ id: f.replace(/\.jsonl$/, ''), mtime: st.mtimeMs });
+    }
+  } catch {}
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out.slice(0, MAX_OPEN_SESSIONS);
+}
+function timelineAll(dir) {
+  const sessions = openSessions(dir);
+  const merged = [];
+  const info = [];
+  for (const s of sessions) {
+    const st = buildStateCached(dir, s.id);
+    info.push({ id: s.id, mtime: s.mtime, agents: (st.agents || []).length,
+      handoffs: (st.timeline || []).length });
+    for (const e of st.timeline || []) merged.push({ ...e, session: s.id });
+  }
+  merged.sort((a, b) => new Date(a.ts || 0) - new Date(b.ts || 0));
+  return { sessions: info, timeline: merged.slice(-80) };
+}
+
 // ---- HTTP -----------------------------------------------------------------
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
@@ -592,6 +654,12 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/version') {
     json({ version: APP_VERSION });
+    return;
+  }
+  if (url.pathname === '/timeline-all') {
+    const projParam = url.searchParams.get('project');
+    const dir = projParam ? path.join(PROJECTS_ROOT, projParam) : PROJECT_DIR;
+    json(timelineAll(dir));
     return;
   }
   if (url.pathname === '/rooms') {
@@ -727,7 +795,26 @@ const HTML = /* html */ `<!doctype html>
     border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px}
   select.proj{background:var(--panel2);color:var(--text);border:1px solid var(--line);
     border-radius:8px;padding:6px 10px;font-size:13px;max-width:230px;cursor:pointer}
-  main{padding:20px;max-width:1120px;margin:0 auto}
+  main{padding:20px;max-width:1400px;margin:0 auto}
+  /* mapa à esquerda + lista de agentes à direita */
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+  .colmain{min-width:0}
+  .colside{min-width:0;position:sticky;top:14px}
+  .gridside{grid-template-columns:1fr;gap:8px;max-height:calc(100vh - 120px);overflow:auto;padding-right:2px}
+  .gridside .card{padding:9px 10px}
+  .gridside .card .ava{width:32px;height:32px;font-size:16px}
+  .gridside .card .dc{max-width:170px}
+  @media(max-width:980px){ .cols{grid-template-columns:1fr} .colside{position:static}
+    .gridside{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));max-height:none} }
+  .tlhead{display:flex;align-items:center;gap:12px;margin:22px 2px 10px;flex-wrap:wrap}
+  .seg.small button{padding:4px 10px;font-size:12px}
+  .tl .sess{font-size:10.5px;color:var(--muted);border:1px solid var(--line);
+    border-radius:999px;padding:1px 7px;flex:none;font-variant-numeric:tabular-nums}
+  .zhead{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    font-size:11px;font-weight:800;letter-spacing:.3px;color:var(--zc);
+    padding:8px 4px 3px;text-transform:uppercase}
+  .zhead .zcount{color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+  .gridside .card .r{gap:8px}
   h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
     margin:22px 2px 10px}
   .hidden{display:none}
@@ -868,20 +955,31 @@ const HTML = /* html */ `<!doctype html>
   <button id="updateClose" class="x" title="Depois">✕</button>
 </div>
 <main>
-  <div id="viewRoom">
-    <h2 class="sec">Sala — a equipe trabalhando</h2>
-    <div class="roomwrap"><canvas id="room" width="900" height="360"></canvas></div>
-  </div>
-  <div id="viewDiagram" class="hidden">
-    <h2 class="sec">Fluxo — quem chamou quem</h2>
-    <div class="flowwrap"><div class="stage" id="stage"></div></div>
+  <div class="cols">
+    <div class="colmain">
+      <div id="viewRoom">
+        <h2 class="sec">Sala — a equipe trabalhando</h2>
+        <div class="roomwrap"><canvas id="room" width="900" height="360"></canvas></div>
+      </div>
+      <div id="viewDiagram" class="hidden">
+        <h2 class="sec">Fluxo — quem chamou quem</h2>
+        <div class="flowwrap"><div class="stage" id="stage"></div></div>
+      </div>
+    </div>
+    <aside class="colside">
+      <h2 class="sec">Agentes</h2>
+      <div class="grid gridside" id="grid"></div>
+    </aside>
   </div>
 
-  <h2 class="sec">Linha do tempo dos handoffs</h2>
+  <div class="tlhead">
+    <h2 class="sec" style="margin:0">Linha do tempo dos handoffs</h2>
+    <div class="seg small" id="tlseg">
+      <button data-scope="one" class="active">Este chat</button>
+      <button data-scope="all">Todos os chats abertos</button>
+    </div>
+  </div>
   <div class="tl" id="timeline"></div>
-
-  <h2 class="sec">Agentes</h2>
-  <div class="grid" id="grid"></div>
 
   <footer class="foot">
     <span id="verLabel">Sala dos Agentes</span>
@@ -1417,25 +1515,58 @@ const HTML = /* html */ `<!doctype html>
     stage.innerHTML='<svg width="'+W+'" height="'+H+'">'+paths+'</svg>'+nodes;
   }
 
-  function renderTimeline(t){
-    if(!t.length){ tl.innerHTML='<div class="empty">nenhum handoff nesta sessão ainda.</div>'; return; }
+  function renderTimeline(t, showSession){
+    if(!t.length){ tl.innerHTML='<div class="empty">'+
+      (showSession?'nenhum handoff nos chats abertos ainda.':'nenhum handoff nesta sessão ainda.')+'</div>'; return; }
     tl.innerHTML = t.slice().reverse().map(function(e){
       var badge = e.done?'<span class="badge ok">concluído</span>':'<span class="badge live">ativo</span>';
-      return '<div class="item"><span class="time">'+hhmm(e.ts)+'</span>'+
+      var sess = (showSession && e.session)
+        ? '<span class="sess" title="chat '+e.session+'">'+e.session.slice(0,6)+'</span>' : '';
+      return '<div class="item"><span class="time">'+hhmm(e.ts)+'</span>'+sess+
         '<span class="who">'+roleEmoji(e.from)+' '+roleName(e.from)+'</span><span class="arrow">→</span>'+
         '<span class="who">'+roleEmoji(e.to)+' '+roleName(e.to)+'</span>'+
         '<span class="desc">— '+(e.description||'')+'</span>'+badge+'</div>';
     }).join('');
   }
 
-  function renderRoster(agents){
-    grid.innerHTML = agents.map(function(a){
-      return '<div class="card '+(a.status==='idle'?'idle':'')+'" style="--accent:'+a.color+'">'+
-        '<div class="r"><div class="ava">'+a.emoji+'</div><div style="min-width:0">'+
-        '<div class="nm">'+a.name+'</div><div class="dc" title="'+(a.description||'')+'">'+(a.description||'—')+'</div></div></div>'+
-        '<div class="doing"><span class="st '+a.status+'"></span><span>'+a.doing+'</span>'+
-        (a.tag?'<span class="pill">'+a.tag+'</span>':'')+'<span class="secs">'+ago(a.lastActiveSecs)+'</span></div></div>';
-    }).join('');
+  // Escopo da linha do tempo: só este chat ou todos os chats abertos.
+  var tlScope='one';
+  document.getElementById('tlseg').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    tlScope=b.dataset.scope;
+    Array.prototype.forEach.call(this.children,function(c){c.classList.toggle('active',c===b);});
+    refreshTimeline();
+  });
+  function refreshTimeline(){
+    if(tlScope!=='all'){ renderTimeline(S.timeline||[], false); return; }
+    var qs = proj ? ('?project='+encodeURIComponent(proj)) : '';
+    fetch('/timeline-all'+qs).then(function(r){return r.json();}).then(function(d){
+      renderTimeline(d.timeline||[], true);
+      var n=(d.sessions||[]).length;
+      var lbl=document.querySelector('#tlseg button[data-scope="all"]');
+      if(lbl) lbl.textContent = 'Todos os chats abertos'+(n?' ('+n+')':'');
+    }).catch(function(){});
+  }
+
+  // Lista lateral: o time inteiro, agrupado pelas mesmas áreas do mapa.
+  function renderRoster(){
+    var html='';
+    ZONES.forEach(function(z){
+      var act=0; z.roles.forEach(function(r){ var s=stateForRole(r).status;
+        if(s==='working'||s==='thinking') act++; });
+      html += '<div class="zhead" style="--zc:'+z.color+'"><span>'+z.emoji+' '+z.name+'</span>'+
+        '<span class="zcount">'+act+'/'+z.roles.length+'</span></div>';
+      z.roles.forEach(function(type){
+        var st=stateForRole(type), meta=rosterMeta(type);
+        var off = st.status==='off';
+        var label = st.doing ? st.doing : (st.status==='done' ? 'concluído' : (off?'inativo':'aguardando'));
+        html += '<div class="card '+(off?'idle':'')+'" style="--accent:'+meta.color+'">'+
+          '<div class="r"><span class="st '+(off?'idle':st.status)+'"></span>'+
+          '<div style="min-width:0"><div class="nm">'+meta.name+'</div>'+
+          '<div class="dc" title="'+label+'">'+label+'</div></div></div></div>';
+      });
+    });
+    grid.innerHTML=html;
   }
 
   // ---- seletor de projeto ----------------------------------------------
@@ -1467,8 +1598,8 @@ const HTML = /* html */ `<!doctype html>
         ? 'sessão '+s.sessionId.slice(0,8)+' · '+s.agents.length+' agente(s) · '+s.timeline.length+' handoff(s)'
         : 'nenhuma sessão ativa encontrada';
       renderFlow(s.agents);
-      renderTimeline(s.timeline);
-      renderRoster(s.agents);
+      refreshTimeline();
+      renderRoster();
     }).catch(function(){ sess.textContent='erro ao ler estado'; });
   }
   // ---- personalização: sala + avatares ---------------------------------
