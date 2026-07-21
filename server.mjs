@@ -201,6 +201,15 @@ const ROOMS = [
 // Fonte única do changelog exibido ao usuário — a mais recente aparece primeiro.
 const CHANGELOG = [
   {
+    version: '0.11.1',
+    date: '2026-07-21',
+    title: 'Linha do tempo ao lado dos agentes',
+    items: [
+      { emoji: '📋', text: 'A linha do tempo dos handoffs agora fica na coluna da direita, logo abaixo da lista de agentes.' },
+      { emoji: '🗂️', text: 'Ela já abre em "Todos os chats abertos" por padrão, agregando tudo que está rolando.' },
+    ],
+  },
+  {
     version: '0.11.0',
     date: '2026-07-21',
     title: 'Escritório mais bonito — madeira, portas e avatares coloridos',
@@ -979,8 +988,8 @@ const HTML = /* html */ `<!doctype html>
   /* mapa à esquerda + lista de agentes à direita */
   .cols{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:18px;align-items:start}
   .colmain{min-width:0}
-  .colside{min-width:0;position:sticky;top:14px}
-  .grid.gridside{grid-template-columns:1fr;gap:6px;max-height:calc(100vh - 120px);overflow:auto;padding-right:4px}
+  .colside{min-width:0;display:flex;flex-direction:column}
+  .grid.gridside{grid-template-columns:1fr;gap:6px;padding-right:4px}
   .zgrp{border:1px solid var(--line);border-radius:11px;background:var(--panel2);overflow:hidden}
   .zgrp>summary{list-style:none;cursor:pointer;user-select:none}
   .zgrp>summary::-webkit-details-marker{display:none}
@@ -1000,7 +1009,9 @@ const HTML = /* html */ `<!doctype html>
   @media(max-width:980px){ .cols{grid-template-columns:1fr} .colside{position:static}
     .grid.gridside{max-height:none}
     .zbody{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))} }
-  .tlhead{display:flex;align-items:center;gap:12px;margin:22px 2px 10px;flex-wrap:wrap}
+  .tlhead{display:flex;align-items:center;gap:12px;margin:20px 2px 10px;flex-wrap:wrap}
+  .colside .tlhead{margin-top:22px}
+  .colside .seg.small{flex-wrap:wrap}
   .seg.small button{padding:4px 10px;font-size:12px}
   .tl .sess{font-size:10.5px;color:var(--muted);border:1px solid var(--line);
     border-radius:999px;padding:1px 7px;flex:none;font-variant-numeric:tabular-nums}
@@ -1188,17 +1199,17 @@ const HTML = /* html */ `<!doctype html>
     <aside class="colside">
       <h2 class="sec">Agentes</h2>
       <div class="grid gridside" id="grid"></div>
+
+      <div class="tlhead">
+        <h2 class="sec" style="margin:0">Linha do tempo dos handoffs</h2>
+        <div class="seg small" id="tlseg">
+          <button data-scope="one">Este chat</button>
+          <button data-scope="all" class="active">Todos os chats abertos</button>
+        </div>
+      </div>
+      <div class="tl" id="timeline"></div>
     </aside>
   </div>
-
-  <div class="tlhead">
-    <h2 class="sec" style="margin:0">Linha do tempo dos handoffs</h2>
-    <div class="seg small" id="tlseg">
-      <button data-scope="one" class="active">Este chat</button>
-      <button data-scope="all">Todos os chats abertos</button>
-    </div>
-  </div>
-  <div class="tl" id="timeline"></div>
 
   <footer class="foot">
     <span id="verLabel">Sala dos Agentes</span>
@@ -2192,7 +2203,7 @@ const HTML = /* html */ `<!doctype html>
   }
 
   // Escopo da linha do tempo: só este chat ou todos os chats abertos.
-  var tlScope='one';
+  var tlScope='all';
   document.getElementById('tlseg').addEventListener('click', function(e){
     var b=e.target.closest('button'); if(!b) return;
     tlScope=b.dataset.scope;
