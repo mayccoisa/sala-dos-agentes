@@ -201,6 +201,19 @@ const ROOMS = [
 // Fonte única do changelog exibido ao usuário — a mais recente aparece primeiro.
 const CHANGELOG = [
   {
+    version: '0.11.0',
+    date: '2026-07-21',
+    title: 'Escritório mais bonito — madeira, portas e avatares coloridos',
+    items: [
+      { emoji: '🚪', text: 'Cada sala agora tem uma porta ligando à vizinha, que acende quando tem gente trabalhando dentro.' },
+      { emoji: '🪵', text: 'Piso de madeira próprio em cada sala (assoalho com veio e nós), no lugar do piso liso.' },
+      { emoji: '🎨', text: 'Avatares nas cores originais e ferramentas (PC, livros, quadro) assentadas em cima da mesa.' },
+      { emoji: '😴', text: 'Agente parado agora solta um "z" flutuante, em vez de ficar apagado.' },
+      { emoji: '🧭', text: 'A área de PM virou "Produto"; a lista lateral agora agrupa as salas de forma recolhível.' },
+      { emoji: '🏷️', text: 'A barra de cima mostra o que você está vendo (Sala ou Diagrama).' },
+    ],
+  },
+  {
     version: '0.3.1',
     date: '2026-07-20',
     title: 'Floresta e Masmorra de verdade',
@@ -885,20 +898,40 @@ const HTML = /* html */ `<!doctype html>
     --text:#e7ecf3; --muted:#8b96a8; --idle:#3a4356;
     --ok:#16a34a; --work:#f59e0b; --think:#38bdf8;
     --floor:#151b26; --floor2:#111722;
+    /* faz o SO desenhar dropdown nativo e scrollbar no tom escuro */
+    color-scheme:dark;
+    --sb:#2c3547; --sbh:#3d4a63;
   }
   :root[data-theme="light"]{
+    color-scheme:light;
+    --sb:#cbd5e1; --sbh:#94a3b8;
     --bg:#f4f6fb; --panel:#ffffff; --panel2:#eef2f9; --line:#e2e8f2;
     --text:#0f172a; --muted:#64748b; --idle:#cbd5e1;
     --ok:#16a34a; --work:#d97706; --think:#0284c7;
     --floor:#eef2f9; --floor2:#e6ecf6;
   }
   *{box-sizing:border-box}
+  /* scrollbars no tom da interface, finas na vertical */
+  *{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}
+  ::-webkit-scrollbar{width:8px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--sb);border-radius:99px;
+    border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:var(--sbh);background-clip:padding-box;
+    border:2px solid transparent}
+  ::-webkit-scrollbar-corner{background:transparent}
+  /* dropdowns nativos: garante fundo escuro na lista de opções */
+  select option,select optgroup{background:var(--panel);color:var(--text)}
   body{margin:0;background:var(--bg);color:var(--text);
     font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  header{display:flex;align-items:center;gap:12px;padding:16px 22px;
-    border-bottom:1px solid var(--line)}
+  header{display:flex;align-items:center;gap:12px;padding:10px 22px;
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
   header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+  .htitle{display:flex;align-items:baseline;gap:10px;min-width:0}
   .sub{color:var(--muted);font-size:12.5px}
+  header .sub{max-width:230px;min-width:0;flex-shrink:1;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  header select.proj{max-width:200px}
   .spacer{flex:1}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);
     box-shadow:0 0 0 0 rgba(22,163,74,.5);animation:pulse 2s infinite}
@@ -928,29 +961,54 @@ const HTML = /* html */ `<!doctype html>
     cursor:pointer;font-weight:640;font-size:12.5px}
   .slackbox button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
   .slackbox .st{font-size:12px;color:var(--muted)}
+  .howto{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+  .howto summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--think)}
+  .howto ol{margin:10px 0 0;padding-left:20px;color:var(--muted);font-size:12.5px;line-height:1.65}
+  .howto li{margin-bottom:5px}
+  .howto b{color:var(--text)}
+  .howto code{background:var(--panel);border:1px solid var(--line);border-radius:5px;
+    padding:1px 5px;font-size:11.5px;color:var(--text)}
+  .howto .tip{margin:10px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
+  .howto a{color:var(--think)}
   .slackbox .st.ok{color:var(--ok)}
+  .slackbox.locked input[type=password]{opacity:.55;cursor:not-allowed}
+  .slackbox button:disabled{opacity:.45;cursor:not-allowed}
   select.proj{background:var(--panel2);color:var(--text);border:1px solid var(--line);
     border-radius:8px;padding:6px 10px;font-size:13px;max-width:230px;cursor:pointer}
   main{padding:20px;max-width:1400px;margin:0 auto}
   /* mapa à esquerda + lista de agentes à direita */
-  .cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:18px;align-items:start}
   .colmain{min-width:0}
   .colside{min-width:0;position:sticky;top:14px}
-  .gridside{grid-template-columns:1fr;gap:8px;max-height:calc(100vh - 120px);overflow:auto;padding-right:2px}
-  .gridside .card{padding:9px 10px}
-  .gridside .card .ava{width:32px;height:32px;font-size:16px}
-  .gridside .card .dc{max-width:170px}
+  .grid.gridside{grid-template-columns:1fr;gap:6px;max-height:calc(100vh - 120px);overflow:auto;padding-right:4px}
+  .zgrp{border:1px solid var(--line);border-radius:11px;background:var(--panel2);overflow:hidden}
+  .zgrp>summary{list-style:none;cursor:pointer;user-select:none}
+  .zgrp>summary::-webkit-details-marker{display:none}
+  .zgrp .zchev{color:var(--zc);transition:transform .15s ease;flex:none;font-size:10px}
+  .zgrp[open] .zchev{transform:rotate(90deg)}
+  .zgrp .ztit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zgrp>summary:hover{background:color-mix(in srgb,var(--zc) 10%,transparent)}
+  .zbody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:2px 8px 9px}
+  .grid.gridside .card{padding:9px 10px;min-width:0}
+  .grid.gridside .card .ava{width:32px;height:32px;font-size:16px}
+  .grid.gridside .card .dc{max-width:100%}
+  .grid.gridside .card .r>div{min-width:0}
+  .grid.gridside .card .nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grid.gridside .card .doing{margin-top:8px;font-size:11.5px}
+  @media(max-width:1180px){ .cols{grid-template-columns:minmax(0,1fr) 320px}
+    .zbody{grid-template-columns:1fr} }
   @media(max-width:980px){ .cols{grid-template-columns:1fr} .colside{position:static}
-    .gridside{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));max-height:none} }
+    .grid.gridside{max-height:none}
+    .zbody{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))} }
   .tlhead{display:flex;align-items:center;gap:12px;margin:22px 2px 10px;flex-wrap:wrap}
   .seg.small button{padding:4px 10px;font-size:12px}
   .tl .sess{font-size:10.5px;color:var(--muted);border:1px solid var(--line);
     border-radius:999px;padding:1px 7px;flex:none;font-variant-numeric:tabular-nums}
-  .zhead{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  .zhead{display:flex;align-items:center;gap:8px;
     font-size:11px;font-weight:800;letter-spacing:.3px;color:var(--zc);
-    padding:8px 4px 3px;text-transform:uppercase}
+    padding:9px 10px;text-transform:uppercase}
   .zhead .zcount{color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
-  .gridside .card .r{gap:8px}
+  .grid.gridside .card .r{gap:8px}
   h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
     margin:22px 2px 10px}
   .hidden{display:none}
@@ -1086,7 +1144,11 @@ const HTML = /* html */ `<!doctype html>
 <body>
 <header>
   <span class="dot"></span>
-  <div><h1>Sala dos Agentes</h1><div class="sub" id="session">conectando…</div></div>
+  <!-- título do que está selecionado (Sala / Diagrama) + estado da leitura -->
+  <div class="htitle">
+    <h1 id="viewTitle">Sala</h1>
+    <div class="sub" id="session" title="estado da leitura dos logs">conectando…</div>
+  </div>
   <div class="spacer"></div>
   <select class="proj" id="proj" title="Projeto a observar"></select>
   <div class="seg" id="seg">
@@ -1116,7 +1178,6 @@ const HTML = /* html */ `<!doctype html>
   <div class="cols">
     <div class="colmain">
       <div id="viewRoom">
-        <h2 class="sec">Sala — a equipe trabalhando</h2>
         <div class="roomwrap"><canvas id="room" width="900" height="360"></canvas></div>
       </div>
       <div id="viewDiagram" class="hidden">
@@ -1181,10 +1242,28 @@ const HTML = /* html */ `<!doctype html>
           </label>
           <button id="slackSave">Salvar</button>
         </div>
+        <details class="howto">
+          <summary>Como pegar o token (passo a passo)</summary>
+          <ol>
+            <li>Abra <a href="https://api.slack.com/apps/" target="_blank" rel="noreferrer">api.slack.com/apps/</a> e clique em <b>Create New App</b>.</li>
+            <li>Vai aparecer a escolha <b>From a manifest</b> ou <b>From scratch</b> → escolha <b>From scratch</b>.</li>
+            <li>Dê um nome (ex.: <code>Sala dos Agentes</code>), escolha o <b>workspace</b> onde você quer que o status mude e clique em <b>Create App</b>.</li>
+            <li>No menu da esquerda, abra <b>OAuth &amp; Permissions</b>.</li>
+            <li>Desça até <b>Scopes</b>. Atenção: existem dois blocos. Use o de baixo, <b>User Token Scopes</b> — <u>não</u> o "Bot Token Scopes".</li>
+            <li>Clique em <b>Add an OAuth Scope</b> e adicione os dois:
+              <code>users.profile:write</code> e <code>dnd:write</code>.</li>
+            <li>Volte ao topo da mesma página e clique em <b>Install to Workspace</b> (ou "Reinstall") → <b>Allow</b>.</li>
+            <li>Copie o <b>User OAuth Token</b>, que começa com <code>xoxp-</code>.
+              O outro (<code>xoxb-</code>, Bot token) <b>não funciona</b> aqui.</li>
+            <li>Cole no campo acima → <b>Testar</b> → marque <b>Ligar sincronização</b> → <b>Salvar</b>.</li>
+          </ol>
+          <p class="tip"><b>Deu erro?</b>
+            <code>invalid_auth</code> = token errado ou incompleto (confira se colou inteiro e se é o <code>xoxp-</code>).
+            <code>missing_scope</code> = faltou adicionar o escopo <i>e</i> reinstalar o app depois de adicionar.
+            <code>not_allowed_token_type</code> = você colou o token de bot (<code>xoxb-</code>) no lugar do de usuário.</p>
+        </details>
         <div class="credit" style="margin-top:10px">
-          Precisa de um token de usuário com escopo <code>users.profile:write</code> (e <code>dnd:write</code> para o "não perturbe").
-          <a href="https://api.slack.com/apps" target="_blank" rel="noreferrer">Criar/gerenciar app do Slack</a>.
-          O token fica salvo só no seu PC.
+          O token fica salvo só no seu PC (<code>~/.claude/agent-room-prefs.json</code>) e nunca é enviado para outro lugar além do Slack.
         </div>
       </div>
     </div>
@@ -1237,6 +1316,8 @@ const HTML = /* html */ `<!doctype html>
   function paImg(file){ var i=new Image(); i.src='/pa/'+file+'.png'; return i; }
   var PA = {
     floor: paImg('floor_0'), floorGrass: null,
+    // pisos alternativos: cada sala ganha o seu (ver ROOM_FLOOR)
+    floorB: paImg('floor_1'), floorC: paImg('floor_3'),
     wall: paImg('wall_0'),
     desk: paImg('DESK_FRONT'),
     chair: paImg('CUSHIONED_CHAIR_BACK'),
@@ -1307,6 +1388,7 @@ const HTML = /* html */ `<!doctype html>
   }
   function hashStr(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i)|0;} return h; }
 
+
   // Ferramenta na mesa por papel — algo ligado ao que o agente faz, em vez do PC.
   // {kind:'pc'} usa o computador (ligado/animado quando trabalhando);
   // {kind:'img', img, sw, sh} desenha uma imagem estática (proporção sw x sh).
@@ -1359,6 +1441,7 @@ const HTML = /* html */ `<!doctype html>
       c.classList.toggle('active', c === b); });
     document.getElementById('viewRoom').classList.toggle('hidden', view!=='room');
     document.getElementById('viewDiagram').classList.toggle('hidden', view!=='diagram');
+    document.getElementById('viewTitle').textContent = (view==='diagram') ? 'Diagrama' : 'Sala';
   });
 
   function cssVar(n){ return getComputedStyle(document.documentElement)
@@ -1537,7 +1620,7 @@ const HTML = /* html */ `<!doctype html>
 
   // Áreas do escritório e quais papéis moram em cada uma.
   var ZONES = [
-    { id:'diretoria', name:'Diretoria', emoji:'🏛️', color:'#6366f1',
+    { id:'diretoria', name:'Produto', emoji:'🧭', color:'#6366f1',
       roles:['orquestrador','pm-lead','pm-growth','pm-core'] },
     { id:'pesquisa', name:'Pesquisa', emoji:'🔬', color:'#0891b2',
       roles:['pesquisador','designer','lead-design'] },
@@ -1616,12 +1699,99 @@ const HTML = /* html */ `<!doctype html>
     ctx.fillStyle='rgba(0,0,0,.12)'; ctx.fillRect(0,0,w,h);
   }
 
-  // Preenche o piso interno de uma salinha com o tile PA (recortado ao retângulo).
-  function fillRoomFloor(x,y,w,h){
+  // ---- Piso de madeira (gerado em pixel-art, sem depender de asset externo) ----
+  // Cada sala tem sua madeira: tábuas de 4px de altura em fiada alternada (bond),
+  // com veio, nós e um brilho suave. Desenhado 1x e reaproveitado como pattern.
+  var WOOD = {
+    carvalho: ['#8a5a32','#7a4e2b','#9a683c','#6b4425'],
+    nogueira: ['#5e3a24','#523120','#6d452b','#42271a'],
+    mel:      ['#b07a44','#a06d3b','#c08a52','#8a5c31'],
+    claro:    ['#c39a68','#b58c5c','#d0a877','#9d7549'],
+    cinza:    ['#7c6f63','#6e6257','#8b7d70','#5c5147'],
+  };
+  var WOOD_CACHE = {};
+  // Gera o tile de madeira (32x32 lógicos, escalado por PSC) e devolve um pattern.
+  function woodPattern(kind){
+    if(WOOD_CACHE[kind]) return WOOD_CACHE[kind];
+    var pal = WOOD[kind] || WOOD.carvalho;
+    // tábua LONGA: 48px de comprimento por 6px de altura (assoalho, não tijolo)
+    var PW = 48, PH = 6, W = PW*2, H = PH*4;
+    var cv = document.createElement('canvas');
+    cv.width = W*PSC; cv.height = H*PSC;
+    var g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.scale(PSC, PSC);
+    for(var row=0; row<H/PH; row++){
+      var y = row*PH;
+      var off = (row%2) ? PW/2 : 0;          // juntas escalonadas entre as fiadas
+      for(var pi=-1; pi<3; pi++){
+        var px = pi*PW + off;
+        var tone = pal[(row*3 + pi + 8) % pal.length] || pal[0];
+        g.fillStyle = tone; g.fillRect(px, y, PW, PH);
+        // veio: riscos longos e finos ao longo da tábua
+        g.fillStyle = 'rgba(0,0,0,.09)';
+        g.fillRect(px+4, y+2, PW-16, 1);
+        g.fillRect(px+PW/2, y+4, PW/3, 1);
+        g.fillStyle = 'rgba(255,255,255,.06)'; g.fillRect(px+6, y+3, PW/2, 1);
+        // nó da madeira, de vez em quando
+        if(((row+pi)%3)===0){ g.fillStyle='rgba(0,0,0,.18)';
+          g.fillRect(px+PW-14, y+2, 3, 2); }
+        // topo da tábua (luz) e junta da ponta (sombra)
+        g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(px, y, PW, 1);
+        g.fillStyle = 'rgba(0,0,0,.30)';      g.fillRect(px+PW-1, y, 1, PH);
+      }
+      // junta horizontal entre as fiadas
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, y+PH-1, W, 1);
+    }
+    var p = ctx.createPattern(cv, 'repeat');
+    WOOD_CACHE[kind] = p; return p;
+  }
+
+  // Piso de cada sala: madeira própria + verniz (brilho) por cima.
+  var ROOM_FLOOR = {
+    diretoria: { wood:'nogueira' },  // madeira escura, sala nobre
+    pesquisa:  { wood:'claro'    },  // clarinha, cara de laboratório
+    dados:     { wood:'carvalho' },  // carvalho
+    chamados:  { wood:'mel'      },  // mel, operação
+    meet1:     { wood:'carvalho' },
+    meet2:     { wood:'carvalho' },
+    cantina:   { wood:'mel'      },
+    descanso:  { wood:'nogueira' },
+  };
+  // Preenche o piso interno de uma salinha com a madeira da sala.
+  function fillRoomFloor(x,y,w,h,roomId){
+    var spec = ROOM_FLOOR[roomId] || { wood:'carvalho' };
     ctx.save(); roundRect(x,y,w,h,7); ctx.clip();
-    if(PA.floor.complete){ for(var yy=y;yy<y+h;yy+=PT) for(var xx=x;xx<x+w;xx+=PT)
-      ctx.drawImage(PA.floor,0,0,16,16,xx,yy,PT,PT); }
-    else { ctx.fillStyle='#8a929e'; ctx.fillRect(x,y,w,h); }
+    var p = woodPattern(spec.wood);
+    if(p){
+      // ancora o padrão no canto da sala, senão a junta "anda" conforme a posição
+      ctx.translate(x,y); ctx.fillStyle=p; ctx.fillRect(0,0,w,h);
+      // verniz: clareia perto da porta/topo e escurece os cantos, dá profundidade
+      var g=ctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0,'rgba(255,255,255,.10)');
+      g.addColorStop(.55,'rgba(255,255,255,.02)');
+      g.addColorStop(1,'rgba(0,0,0,.16)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    } else { ctx.fillStyle='#8a5a32'; ctx.fillRect(x,y,w,h); }
+    ctx.restore();
+  }
+
+
+  // Porta lateral: liga a sala à vizinha. Fica na parede esquerda/direita, na
+  // altura do meio — longe das plaquinhas de mesa.
+  function drawDoorSide(xWall, cy, color, lit, side){
+    var dh=Math.round(PT*1.5), dw=Math.round(PT*0.5);
+    var x=Math.round(xWall-dw/2), y=Math.round(cy-dh/2);
+    ctx.save();
+    ctx.fillStyle='#0e1219'; ctx.fillRect(x,y,dw,dh);
+    var lh=Math.round(dh*0.44);
+    ctx.fillStyle='#6b4a2f'; ctx.fillRect(x+1,y+2,dw-2,lh);
+    ctx.fillStyle='#8a6440'; ctx.fillRect(x+2,y+4,dw-4,lh-5);
+    ctx.fillStyle='#e8c96a'; ctx.fillRect(x+dw-4,y+lh-5,2,3);
+    ctx.fillStyle=color; ctx.globalAlpha=lit?1:.6;
+    ctx.fillRect(x-2,y-3,dw+4,3); ctx.fillRect(x-2,y+dh,dw+4,3);
+    ctx.globalAlpha=1;
+    if(lit){ ctx.globalAlpha=.20; ctx.fillStyle=color;
+      ctx.fillRect(side==='left'?x-Math.round(PT*0.6):x+dw, y, Math.round(PT*0.6), dh); }
     ctx.restore();
   }
 
@@ -1678,22 +1848,43 @@ const HTML = /* html */ `<!doctype html>
     // Agente ausente (reunião/almoço/casa): cadeira vazia.
     if(!away){
       var img=charFor(type);
-      ctx.save(); ctx.globalAlpha = off?0.5 : (st.status==='idle'?0.75:1);
+      // avatar SEMPRE opaco — sem lavagem de cor por cima (a cor vive na plaquinha)
+      ctx.save();
       if(img && img.complete) ctx.drawImage(img,0,0,16,32, ax,ay,aw,ah);
       else { ctx.fillStyle=meta.color; ctx.fillRect(ax,ay,aw,ah); }
       ctx.restore();
+      // (2) FEEDBACK de parado: soninho flutuando, em vez de apagar o personagem
+      if(off || st.status==='idle'){
+        var zt = t/600 + cx;
+        ctx.save();
+        ctx.textAlign='left'; ctx.textBaseline='middle';
+        for(var zi=0; zi<3; zi++){
+          var ph=(zt+zi*0.66)%1;                       // 0..1 = ciclo de subida
+          ctx.globalAlpha=(1-ph)*(off?0.55:0.75);
+          ctx.font='800 '+(8+zi*2)+'px ui-sans-serif,system-ui';
+          ctx.fillStyle= off ? '#8b96a8' : meta.color;
+          ctx.fillText('z', ax+aw-2+zi*3, ay+4-ph*16);
+        }
+        ctx.restore();
+      }
     }
     if(PA.desk.complete) ctx.drawImage(PA.desk, deskX, deskY, deskW, deskH);
 
-    // (3) FERRAMENTA na mesa (por papel), em vez do PC do lado.
+    // (3) FERRAMENTA em cima do TAMPO da mesa (desenhada depois do móvel).
+    // O tampo do desk fica logo abaixo da borda de cima; assentamos a base do
+    // objeto nessa linha para que pareça apoiado na mesa, não sobre o agente.
     var tool=deskTool(type);
+    // O sprite DESK_FRONT tem topo transparente; o tampo visível fica ~60% da
+    // altura. Assentamos a BASE do objeto nessa linha, sem passar da metade dele
+    // pra cima (senão volta a cobrir o agente).
+    var topSurf = deskY + deskH*0.60;
     if(tool.kind==='pc'){
       var pcImg = (working||foco) ? PA.pcOn[Math.floor(t/160)%3] : PA.pcOff;
-      var ph=30*MZ*0.55, pw=16*MZ*0.85, px=cx-pw/2, py=(deskY+6*MZ)-ph*0.55;
+      var ph=13*MZ, pw=13*MZ, px=cx-pw/2, py=topSurf-ph;
       if(pcImg && pcImg.complete) ctx.drawImage(pcImg, px, py, pw, ph);
     } else if(tool.img && tool.img.complete){
-      var scale=(deskW*0.5)/tool.sw, iw=tool.sw*scale, ih=tool.sh*scale;
-      var ix=cx-iw/2, iy=(deskY+7*MZ)-ih;
+      var scale=(deskW*0.38)/tool.sw, iw=tool.sw*scale, ih=tool.sh*scale;
+      var ix=cx-iw/2, iy=topSurf-ih;
       ctx.drawImage(tool.img, 0,0,tool.sw,tool.sh, ix, iy - (working?Math.round(1+pulse):0), iw, ih);
     }
 
@@ -1728,13 +1919,8 @@ const HTML = /* html */ `<!doctype html>
     var anyActive=false, actives=0;
     z.roles.forEach(function(r){ var s=effState(r).status;
       if(s==='working'||s==='thinking'||s==='foco'){anyActive=true;actives++;} });
-    // piso da área (cinza PA) + tinta da cor da área
-    fillRoomFloor(x, bodyY, w, bodyH);
-    ctx.save(); roundRect(x,bodyY,w,bodyH,8); ctx.clip();
-    ctx.fillStyle=z.color; ctx.globalAlpha=0.12; ctx.fillRect(x,bodyY,w,bodyH);
-    // tapete central
-    ctx.globalAlpha=0.16; roundRect(x+18,bodyY+14,w-36,bodyH-28,10); ctx.fill();
-    ctx.restore();
+    // piso próprio da área (madeira pura, sem lavagem de cor por cima)
+    fillRoomFloor(x, bodyY, w, bodyH, z.id);
     // decoração de canto (planta)
     if(PA.plant.complete) ctx.drawImage(PA.plant, x+w-16*2-8, y+h-32*2-6, 16*2, 32*2);
     if(z.id==='pesquisa' && PA.bookshelf.complete) ctx.drawImage(PA.bookshelf, x+10, bodyY+8, 32*2, 16*2);
@@ -1743,13 +1929,9 @@ const HTML = /* html */ `<!doctype html>
     ctx.save(); ctx.lineWidth=anyActive?3:2;
     ctx.strokeStyle = anyActive ? z.color : 'rgba(120,130,145,.7)';
     if(anyActive){ ctx.shadowColor=z.color; ctx.shadowBlur=12; }
-    var doorW=2*PT, dl=x+w/2-doorW/2, dr=x+w/2+doorW/2;
-    ctx.beginPath();
-    ctx.moveTo(dl,y+h); ctx.lineTo(x+8,y+h); ctx.arcTo(x,y+h,x,y+h-8,8);
-    ctx.lineTo(x,bodyY); ctx.lineTo(x+w,bodyY); ctx.lineTo(x+w,y+h-8);
-    ctx.arcTo(x+w,y+h,x+w-8,y+h,8); ctx.lineTo(dr,y+h);
-    ctx.stroke(); ctx.restore();
-    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(dl,y+h-4,doorW,6);
+    roundRect(x,bodyY,w,h-(bodyY-y),8); ctx.stroke(); ctx.restore();
+    // uma única porta por sala, na parede esquerda, ligando à vizinha
+    drawDoorSide(x, bodyY+bodyH*0.62, z.color, anyActive, 'left');
     // letreiro
     ctx.save(); roundRect(x,y,w,ZHEAD,8); ctx.clip();
     ctx.fillStyle=z.color; ctx.globalAlpha=anyActive?1:0.85; ctx.fillRect(x,y,w,ZHEAD);
@@ -1770,24 +1952,15 @@ const HTML = /* html */ `<!doctype html>
     });
   }
 
-  // Moldura comum (piso + tinta + tapete + paredes com porta + letreiro).
-  function drawFrame(x,y,w,h,color,emoji,name,rightText,active){
+  // Moldura comum (piso de madeira + paredes com porta + letreiro).
+  function drawFrame(x,y,w,h,color,emoji,name,rightText,active,roomId){
     var bodyY=y+ZHEAD, bodyH=h-ZHEAD;
-    fillRoomFloor(x, bodyY, w, bodyH);
-    ctx.save(); roundRect(x,bodyY,w,bodyH,8); ctx.clip();
-    ctx.fillStyle=color; ctx.globalAlpha=0.12; ctx.fillRect(x,bodyY,w,bodyH);
-    ctx.globalAlpha=0.16; roundRect(x+18,bodyY+14,w-36,bodyH-28,10); ctx.fill();
-    ctx.restore();
+    fillRoomFloor(x, bodyY, w, bodyH, roomId);
     ctx.save(); ctx.lineWidth=active?3:2;
     ctx.strokeStyle = active ? color : 'rgba(120,130,145,.7)';
     if(active){ ctx.shadowColor=color; ctx.shadowBlur=12; }
-    var doorW=2*PT, dl=x+w/2-doorW/2, dr=x+w/2+doorW/2;
-    ctx.beginPath();
-    ctx.moveTo(dl,y+h); ctx.lineTo(x+8,y+h); ctx.arcTo(x,y+h,x,y+h-8,8);
-    ctx.lineTo(x,bodyY); ctx.lineTo(x+w,bodyY); ctx.lineTo(x+w,y+h-8);
-    ctx.arcTo(x+w,y+h,x+w-8,y+h,8); ctx.lineTo(dr,y+h);
-    ctx.stroke(); ctx.restore();
-    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(dl,y+h-4,doorW,6);
+    roundRect(x,bodyY,w,h-(bodyY-y),8); ctx.stroke(); ctx.restore();
+    drawDoorSide(x, bodyY+bodyH*0.62, color, active, 'left');
     ctx.save(); roundRect(x,y,w,ZHEAD,8); ctx.clip();
     ctx.fillStyle=color; ctx.globalAlpha=active?1:0.85; ctx.fillRect(x,y,w,ZHEAD);
     ctx.restore();
@@ -1837,7 +2010,7 @@ const HTML = /* html */ `<!doctype html>
     var kind=cm.kind, active = (kind==='meeting'||kind==='cantina') && occupants.length>0;
     var right = kind==='meeting' ? (occupants.length+' em reunião')
       : (kind==='cantina' ? (occupants.length?occupants.length+' no almoço':'café & comida') : '2 PCs gamer');
-    var b=drawFrame(x,y,w,h,cm.color,cm.emoji,cm.name,right,active);
+    var b=drawFrame(x,y,w,h,cm.color,cm.emoji,cm.name,right,active,cm.id);
     var cxm=x+w/2, midY=b.bodyY+b.bodyH/2;
     if(kind==='meeting'){
       // mesa de reunião ao centro
@@ -2045,8 +2218,13 @@ const HTML = /* html */ `<!doctype html>
     ZONES.forEach(function(z){
       var act=0; z.roles.forEach(function(r){ var s=effState(r).status;
         if(s==='working'||s==='thinking'||s==='foco') act++; });
-      html += '<div class="zhead" style="--zc:'+z.color+'"><span>'+z.emoji+' '+z.name+'</span>'+
-        '<span class="zcount">'+act+'/'+z.roles.length+'</span></div>';
+      // abre sozinho quando tem gente ativa; depois respeita o que o usuário escolheu
+      var open = (ZOPEN[z.name]===undefined) ? act>0 : ZOPEN[z.name];
+      html += '<details class="zgrp" data-zone="'+z.name+'" style="--zc:'+z.color+'"'+(open?' open':'')+'>'+
+        '<summary class="zhead"><span class="zchev">▸</span>'+
+        '<span class="ztit">'+z.emoji+' '+z.name+'</span>'+
+        '<span class="zcount">'+act+'/'+z.roles.length+'</span></summary>'+
+        '<div class="zbody">';
       z.roles.forEach(function(type){
         var st=effState(type), meta=rosterMeta(type);
         var off = st.status==='off';
@@ -2058,9 +2236,16 @@ const HTML = /* html */ `<!doctype html>
           '<div style="min-width:0"><div class="nm">'+meta.person+' · <span style="color:'+meta.color+'">'+meta.name+'</span></div>'+
           '<div class="dc" title="'+label+'">'+(manual?'✋ ':'')+label+'</div></div></div></div>';
       });
+      html += '</div></details>';
     });
     grid.innerHTML=html;
   }
+  // lembra quais áreas o usuário abriu/fechou (sobrevive ao poll de 2s)
+  var ZOPEN={};
+  grid.addEventListener('toggle', function(e){
+    var d=e.target.closest('details.zgrp'); if(!d) return;
+    ZOPEN[d.dataset.zone]=d.open;
+  }, true);
   grid.addEventListener('click', function(e){
     var c=e.target.closest('[data-role]'); if(!c) return;
     var r=c.getBoundingClientRect();
@@ -2266,26 +2451,52 @@ const HTML = /* html */ `<!doctype html>
       fetch('/slack/apply',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({status:PREFS.myStatus})}).then(function(r){return r.json();}).then(function(d){
         if(d.ok) toast('Status atualizado no Slack ✓','ok');
-        else toast('Slack: '+(d.error||'falhou'),'err');
+        else toast('Slack: '+slackHint(d.error),'err');
       }).catch(function(){ toast('Não consegui falar com o Slack','err'); });
     }
   });
 
   var slackToken=document.getElementById('slackToken'), slackEnabled=document.getElementById('slackEnabled'),
       slackState=document.getElementById('slackState');
+  var SLACK_HINTS={
+    invalid_auth:'token inválido — confira se colou o token inteiro e se ele começa com xoxp-',
+    not_authed:'nenhum token informado',
+    account_inactive:'a conta do Slack está inativa nesse workspace',
+    token_revoked:'o token foi revogado — gere de novo em OAuth & Permissions',
+    missing_scope:'faltou escopo — adicione users.profile:write e dnd:write e REINSTALE o app',
+    not_allowed_token_type:'esse é o token de bot (xoxb-); use o User OAuth Token (xoxp-)'
+  };
+  function slackHint(e){ return SLACK_HINTS[e] || (e||'token inválido'); }
   function paintSlack(){
     var s=PREFS.slack||{}; slackEnabled.checked=!!s.enabled;
     slackState.textContent = s.hasToken ? (s.enabled?'Conectado e sincronizando.':'Token salvo (sincronização desligada).')
       : 'Não configurado.';
     slackState.className = 'st '+(s.hasToken&&s.enabled?'ok':'');
+    // conectado = campo travado; pra trocar o token, desligue a sincronização antes
+    var locked = !!(s.hasToken && s.enabled);
+    slackToken.disabled = locked;
+    slackToken.value = '';
+    slackToken.placeholder = locked ? 'Token salvo e em uso — desligue a sincronização para trocar'
+      : (s.hasToken ? 'Token salvo — digite outro só se quiser trocar' : 'Cole seu token do Slack (xoxp-…)');
+    document.getElementById('slackTest').disabled = locked;
+    var box=slackToken.closest('.slackbox'); if(box) box.classList.toggle('locked', locked);
   }
+  // desmarcar "ligar sincronização" já libera o campo pra trocar o token
+  slackEnabled.addEventListener('change', function(){
+    var free = !this.checked;
+    slackToken.disabled = !free && !!(PREFS.slack&&PREFS.slack.hasToken) ? true : false;
+    document.getElementById('slackTest').disabled = slackToken.disabled;
+    var box=slackToken.closest('.slackbox'); if(box) box.classList.toggle('locked', slackToken.disabled);
+    if(free) slackToken.placeholder='Cole um novo token (ou deixe vazio pra manter o atual)';
+  });
   document.getElementById('slackTest').addEventListener('click', function(){
     var tok=slackToken.value.trim();
     toast('Testando conexão…');
     fetch('/slack/test',{method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({token:tok})}).then(function(r){return r.json();}).then(function(d){
       if(d.ok) toast('Conectado como '+d.user+' ('+d.team+') ✓','ok');
-      else toast('Falhou: '+(d.error||'token inválido'),'err');
+      else { toast('Falhou: '+slackHint(d.error),'err');
+             var det=document.querySelector('.howto'); if(det) det.open=true; }
     }).catch(function(){ toast('Erro ao testar','err'); });
   });
   document.getElementById('slackSave').addEventListener('click', function(){
